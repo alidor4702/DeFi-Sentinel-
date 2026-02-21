@@ -1,13 +1,17 @@
-import { Shield, Activity } from "lucide-react";
+import { Shield, Activity, Star } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { useWatchlist } from "@/context/WatchlistContext";
 
 const navItems = [
   { label: "Dashboard", path: "/" },
   { label: "Scan Token", path: "/scan" },
+  { label: "Watchlist", path: "/watchlist" },
 ];
 
 const Header = () => {
   const location = useLocation();
+  const { watchlistTokens } = useWatchlist();
+  const watchlistCount = watchlistTokens.length;
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -49,6 +53,11 @@ const Header = () => {
               }`}
             >
               {item.label}
+              {item.path === "/watchlist" && watchlistCount > 0 && (
+                <span className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white">
+                  {watchlistCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>

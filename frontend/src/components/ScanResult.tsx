@@ -1,32 +1,9 @@
-import { Shield, AlertTriangle, Loader2, Database, Brain, Users, Droplets, Clock, Lock, Snowflake, PieChart, TrendingUp } from "lucide-react";
-
-interface ScanResultData {
-  name: string;
-  symbol: string;
-  mint: string;
-  riskScore: number;
-  verdict: "SAFE" | "DANGER";
-  metrics: {
-    mlConfidence: number;
-    holders: number;
-    liquidity: number;
-    poolAge: number;
-    mintAuthority: boolean;
-    freezeAuthority: boolean;
-    rugCheckScore: number;
-    topHolderPercent: number;
-  };
-  riskFactors: {
-    level: "critical" | "high" | "medium";
-    name: string;
-    score: number;
-    description: string;
-  }[];
-  aiAnalysis: string;
-}
+import { Shield, AlertTriangle, Loader2, Database, Brain, Users, Droplets, Clock, Lock, Snowflake, PieChart, TrendingUp, ExternalLink, DollarSign, BarChart3, Star } from "lucide-react";
+import { ScanResultData } from "@/lib/api";
+import { useWatchlist } from "@/context/WatchlistContext";
 
 interface ScanResultProps {
-  data: ScanResultData;
+  data: ScanResultData | null;
   loading: boolean;
 }
 
@@ -36,19 +13,57 @@ const levelColors = {
   medium: "bg-primary/15 text-primary border-primary/30",
 };
 
+function formatUsd(v: number | null | undefined): string {
+  if (v == null) return "N/A";
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}K`;
+  if (v >= 1) return `$${v.toFixed(2)}`;
+  if (v > 0) return `$${v.toFixed(6)}`;
+  return "$0";
+}
+
 const ScanResult = ({ data, loading }: ScanResultProps) => {
+  const { addToWatchlist, removeFromWatchlist, isInWatchlist } = useWatchlist();
+
   if (loading) {
     return (
       <div className="mt-8 flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card p-16">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Running AI analysis on token...</p>
+        <p className="text-sm text-muted-foreground">Collecting live data from 5 sources...</p>
         <div className="animate-shimmer h-1 w-48 rounded-full" />
       </div>
     );
   }
 
+  if (!data) return null;
+
   const isSafe = data.verdict === "SAFE";
   const glowClass = isSafe ? "glow-safe border-safe/40" : "glow-danger border-danger/40";
+
+  // Build metrics grid — swap placeholders when no ML/holder data
+  const metricsGrid = [];
+
+  if (data.metrics.mlConfidence > 0) {
+    metricsGrid.push({ icon: Brain, label: "ML Confidence", value: `${data.metrics.mlConfidence}%` });
+  } else {
+    metricsGrid.push({ icon: DollarSign, label: "Price", value: data.price != null ? formatUsd(data.price) : "N/A" });
+  }
+
+  if (data.metrics.holders > 0) {
+    metricsGrid.push({ icon: Users, label: "Holders", value: data.metrics.holders.toLocaleString() });
+  } else {
+    metricsGrid.push({ icon: BarChart3, label: "Volume 24h", value: formatUsd(data.volume24h) });
+  }
+
+  metricsGrid.push(
+    { icon: Droplets, label: "Liquidity", value: formatUsd(data.metrics.liquidity) },
+    { icon: Clock, label: "Pool Age", value: `${data.metrics.poolAge} days` },
+    { icon: Lock, label: "Mint Authority", value: data.metrics.mintAuthority ? "ENABLED" : "Disabled", danger: data.metrics.mintAuthority },
+    { icon: Snowflake, label: "Freeze Authority", value: data.metrics.freezeAuthority ? "ENABLED" : "Disabled", danger: data.metrics.freezeAuthority },
+    { icon: Database, label: "RugCheck Score", value: `${data.metrics.rugCheckScore}/100` },
+    { icon: PieChart, label: "Top Holder %", value: `${data.metrics.topHolderPercent}%`, danger: data.metrics.topHolderPercent > 50 },
+  );
 
   return (
     <div className={`mt-8 animate-fade-in-up rounded-xl border bg-card p-6 ${glowClass}`}>
@@ -75,6 +90,32 @@ const ScanResult = ({ data, loading }: ScanResultProps) => {
             {data.mint.slice(0, 12)}...{data.mint.slice(-8)}
           </p>
         </div>
+        <button
+          onClick={() => {
+            if (isInWatchlist(data.mint)) {
+              removeFromWatchlist(data.mint);
+            } else {
+              addToWatchlist({
+                mint: data.mint,
+                name: data.name,
+                symbol: data.symbol,
+                riskScore: data.riskScore,
+                liquidity: data.metrics.liquidity,
+                geckoTerminalUrl: data.geckoTerminalUrl,
+                price: data.price,
+                poolAgeHours: data.metrics.poolAge * 24,
+                addedAt: Date.now(),
+              });
+            }
+          }}
+          className={`ml-auto flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${
+            isInWatchlist(data.mint)
+              ? "border-primary/30 bg-primary/15 text-primary hover:bg-primary/10"
+              : "border-border bg-secondary text-muted-foreground hover:text-primary"
+          }`}
+        >
+          <Star className={`h-5 w-5 ${isInWatchlist(data.mint) ? "fill-current" : ""}`} />
+        </button>
       </div>
 
       {/* Risk meter */}
@@ -95,16 +136,7 @@ const ScanResult = ({ data, loading }: ScanResultProps) => {
 
       {/* Metrics grid */}
       <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[
-          { icon: Brain, label: "ML Confidence", value: `${data.metrics.mlConfidence}%` },
-          { icon: Users, label: "Holders", value: data.metrics.holders.toLocaleString() },
-          { icon: Droplets, label: "Liquidity", value: `$${data.metrics.liquidity >= 1e6 ? `${(data.metrics.liquidity / 1e6).toFixed(0)}M` : data.metrics.liquidity >= 1e3 ? `${(data.metrics.liquidity / 1e3).toFixed(1)}K` : data.metrics.liquidity}` },
-          { icon: Clock, label: "Pool Age", value: `${data.metrics.poolAge} days` },
-          { icon: Lock, label: "Mint Authority", value: data.metrics.mintAuthority ? "ENABLED ⚠️" : "Disabled ✓", danger: data.metrics.mintAuthority },
-          { icon: Snowflake, label: "Freeze Authority", value: data.metrics.freezeAuthority ? "ENABLED ⚠️" : "Disabled ✓", danger: data.metrics.freezeAuthority },
-          { icon: Database, label: "RugCheck Score", value: `${data.metrics.rugCheckScore}/100` },
-          { icon: PieChart, label: "Top Holder %", value: `${data.metrics.topHolderPercent}%`, danger: data.metrics.topHolderPercent > 50 },
-        ].map(({ icon: Icon, label, value, danger }, i) => (
+        {metricsGrid.map(({ icon: Icon, label, value, danger }, i) => (
           <div key={i} className="rounded-lg border border-border bg-secondary/50 p-3">
             <div className="flex items-center gap-1.5">
               <Icon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -150,14 +182,30 @@ const ScanResult = ({ data, loading }: ScanResultProps) => {
         <p className="text-sm leading-relaxed text-foreground/80">{data.aiAnalysis}</p>
       </div>
 
-      {/* Data sources */}
+      {/* Data sources + GeckoTerminal link */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] text-muted-foreground">Data sources:</span>
-        {["SolRPDS (116K events)", "RugCheck", "GeckoTerminal", "Helius"].map((s) => (
+        {["RugCheck", "GeckoTerminal", "Helius", "Jupiter"].map((s) => (
           <span key={s} className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
             {s}
           </span>
         ))}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <a
+          href={data.geckoTerminalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary/80"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          View on GeckoTerminal
+        </a>
+        <span className="text-[10px] text-muted-foreground">
+          {data.featuresCollected} features collected in {(data.totalLatencyMs / 1000).toFixed(1)}s
+          {data.errors.length > 0 && ` · ${data.errors.length} error${data.errors.length > 1 ? "s" : ""}`}
+        </span>
       </div>
     </div>
   );

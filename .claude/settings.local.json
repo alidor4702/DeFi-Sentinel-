@@ -24,7 +24,14 @@
       "Bash(findstr:*)",
       "WebFetch(domain:solscan.io)",
       "WebFetch(domain:decrypt.co)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(git -C \"C:\\\\Users\\\\alexa\\\\OneDrive\\\\Documents\\\\HackEurope\\\\DeFi-Sentinel-\" branch -a)",
+      "Bash(git -C \"C:\\\\Users\\\\alexa\\\\OneDrive\\\\Documents\\\\HackEurope\\\\DeFi-Sentinel-\" log main..origin/backend-frontend --oneline)",
+      "Bash(git -C \"C:\\\\Users\\\\alexa\\\\OneDrive\\\\Documents\\\\HackEurope\\\\DeFi-Sentinel-\" diff main..origin/backend-frontend --stat)",
+      "Bash(git merge:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nMerge branch ''backend-frontend'' into main\n\nBring in React frontend \\(Vite + Tailwind + shadcn\\) and feature docs.\nEOF\n\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite build)"
     ]
   }
 }

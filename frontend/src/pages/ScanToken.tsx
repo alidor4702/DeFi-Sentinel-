@@ -1,23 +1,30 @@
 import { useState } from "react";
 import { Search, Shield } from "lucide-react";
 import ScanResult from "@/components/ScanResult";
-import { SAFE_TOKEN_RESULT, DANGER_TOKEN_RESULT } from "@/data/mockData";
+import { scanToken, ScanResultData } from "@/lib/api";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 const ScanToken = () => {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<typeof SAFE_TOKEN_RESULT | typeof DANGER_TOKEN_RESULT | null>(null);
+  const [result, setResult] = useState<ScanResultData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleScan = () => {
-    if (!address.trim()) return;
+  const handleScan = async () => {
+    const mint = address.trim();
+    if (!mint) return;
     setLoading(true);
     setResult(null);
-    setTimeout(() => {
-      setResult(address.trim() === USDC_MINT ? SAFE_TOKEN_RESULT : DANGER_TOKEN_RESULT);
+    setError(null);
+    try {
+      const data = await scanToken(mint);
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Scan failed");
+    } finally {
       setLoading(false);
-    }, 2000);
+    }
   };
 
   return (
@@ -41,7 +48,7 @@ const ScanToken = () => {
         </div>
         <button
           onClick={handleScan}
-          disabled={!address.trim() || scansRemaining <= 0}
+          disabled={!address.trim() || loading}
           className="flex h-12 items-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90 disabled:opacity-40"
         >
           <Shield className="h-4 w-4" />
@@ -66,9 +73,16 @@ const ScanToken = () => {
         </button>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="mt-6 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+          {error}
+        </div>
+      )}
+
       {/* Results */}
       {(loading || result) && (
-        <ScanResult data={result || DANGER_TOKEN_RESULT} loading={loading} />
+        <ScanResult data={result} loading={loading} />
       )}
     </div>
   );
