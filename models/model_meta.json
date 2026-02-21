@@ -1,0 +1,112 @@
+{
+  "model_version": "1.0.0",
+  "algorithm": "XGBoost",
+  "n_estimators": 300,
+  "max_depth": 6,
+  "training_samples": 9635,
+  "test_samples": 24904,
+  "metrics": {
+    "auc_roc": 0.9972,
+    "precision": 0.9813,
+    "recall": 0.9486,
+    "f1_score": 0.9647,
+    "mcc": 0.9392
+  },
+  "threshold_default": 0.5,
+  "threshold_optimal": 0.2268,
+  "features_count": 50,
+  "top_features": [
+    {
+      "name": "MINT_AUTHORITY_ACTIVE",
+      "importance": 0.4318
+    },
+    {
+      "name": "derived_metadata_completeness",
+      "importance": 0.2301
+    },
+    {
+      "name": "derived_token_std_rug_rate",
+      "importance": 0.1405
+    },
+    {
+      "name": "HAS_METADATA",
+      "importance": 0.0739
+    },
+    {
+      "name": "NUM_LIQUIDITY_ADDS",
+      "importance": 0.0326
+    },
+    {
+      "name": "HAS_JSON_URI",
+      "importance": 0.0325
+    },
+    {
+      "name": "derived_uri_domain_rug_rate",
+      "importance": 0.0096
+    },
+    {
+      "name": "IS_MUTABLE",
+      "importance": 0.0096
+    },
+    {
+      "name": "HAS_IMAGE",
+      "importance": 0.0082
+    },
+    {
+      "name": "gp_top3_holder_pct",
+      "importance": 0.0067
+    }
+  ],
+  "feature_sources": {
+    "TOTAL_ADDED_LIQUIDITY": "Helius/SolRPDS",
+    "NUM_LIQUIDITY_ADDS": "Helius/SolRPDS",
+    "HAS_METADATA": "Helius/SolRPDS",
+    "HAS_IMAGE": "Helius/SolRPDS",
+    "HAS_JSON_URI": "Helius/SolRPDS",
+    "TOKEN_DECIMALS": "Helius/SolRPDS",
+    "TOKEN_SUPPLY": "Helius/SolRPDS",
+    "IS_MUTABLE": "Helius/SolRPDS",
+    "ROYALTY_PCT": "Helius/SolRPDS",
+    "EDITION_TOTAL_SUPPLY": "Helius/SolRPDS",
+    "NUM_CREATORS": "Helius/SolRPDS",
+    "CREATOR_VERIFIED": "Helius/SolRPDS",
+    "MINT_AUTHORITY_ACTIVE": "Helius/SolRPDS",
+    "RC_SCORE": "RugCheck",
+    "RC_SCORE_NORM": "RugCheck",
+    "RC_RUGGED": "RugCheck",
+    "RC_TOTAL_HOLDERS": "RugCheck",
+    "RC_TOTAL_MARKET_LIQ": "RugCheck",
+    "RC_TOTAL_LP_PROVIDERS": "RugCheck",
+    "RC_MINT_AUTHORITY": "RugCheck",
+    "RC_FREEZE_AUTHORITY": "RugCheck",
+    "RC_NUM_RISKS": "RugCheck",
+    "RC_NUM_DANGERS": "RugCheck",
+    "RC_NUM_WARNS": "RugCheck",
+    "RC_TRANSFER_FEE": "RugCheck",
+    "RC_TOP_HOLDER_PCT": "RugCheck",
+    "rc_score": "RugCheck",
+    "rc_score_norm": "RugCheck",
+    "rc_risks_count": "RugCheck",
+    "rc_top_risk_score": "RugCheck",
+    "rc_total_market_liq": "RugCheck",
+    "rc_total_lp_providers": "RugCheck",
+    "rc_freeze_authority": "RugCheck",
+    "rc_mint_authority": "RugCheck",
+    "rc_top_holders_pct": "RugCheck",
+    "rc_creator_pct": "RugCheck",
+    "gt_pool_count": "GeckoTerminal",
+    "gt_price_pct_24h": "GeckoTerminal",
+    "gp_token_name": "GoPlus",
+    "gp_token_symbol": "GoPlus",
+    "gp_top3_holder_pct": "GoPlus",
+    "gp_total_tvl": "GoPlus",
+    "gp_lp_count": "GoPlus",
+    "gp_freeze_authority": "GoPlus",
+    "derived_avg_add_size": "Derived",
+    "derived_metadata_completeness": "Derived",
+    "derived_log_supply": "Derived",
+    "derived_supply_decimal_ratio": "Derived",
+    "derived_uri_domain_rug_rate": "Derived",
+    "derived_token_std_rug_rate": "Derived"
+  }
+}
