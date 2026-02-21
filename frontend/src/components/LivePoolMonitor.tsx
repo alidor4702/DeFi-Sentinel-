@@ -133,7 +133,7 @@ const LivePoolMonitor = () => {
 
       {/* Token rows */}
       <div className="space-y-1">
-        {tokens.slice(0, 15).map((token) => {
+        {tokens.slice(0, 30).map((token) => {
           const starred = isInWatchlist(token.mint);
           return (
             <div
@@ -173,7 +173,12 @@ const LivePoolMonitor = () => {
                     className="h-full rounded-full transition-all duration-500"
                     style={{
                       width: `${token.riskScore}%`,
-                      backgroundColor: token.riskScore > 50 ? "hsl(0 84% 60%)" : "hsl(160 84% 39%)",
+                      backgroundColor:
+                        token.riskScore >= 70
+                          ? "hsl(0 84% 60%)"
+                          : token.riskScore >= 40
+                          ? "hsl(38 92% 50%)"
+                          : "hsl(160 84% 39%)",
                     }}
                   />
                 </div>
@@ -182,12 +187,18 @@ const LivePoolMonitor = () => {
               {/* Verdict */}
               <span
                 className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                  token.riskScore > 50
+                  token.riskScore >= 70
                     ? "bg-danger/15 text-danger"
+                    : token.riskScore >= 40
+                    ? "bg-amber-500/15 text-amber-500"
                     : "bg-safe/15 text-safe"
                 }`}
               >
-                {token.riskScore > 50 ? `${token.riskScore}% RUG` : `${token.riskScore}% SAFE`}
+                {token.riskScore >= 70
+                  ? `${token.riskScore}% RUG`
+                  : token.riskScore >= 40
+                  ? `${token.riskScore}% MODERATE`
+                  : `${token.riskScore}% SAFE`}
               </span>
 
               {/* Launched */}

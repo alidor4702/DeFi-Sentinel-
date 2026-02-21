@@ -38,6 +38,7 @@ export interface TokenListItem {
   holders: number;
   liquidity: number;
   riskScore: number;
+  riskLabel: "SAFE" | "MODERATE" | "DANGER";
   color: string;
   geckoTerminalUrl: string;
   price: number | null;

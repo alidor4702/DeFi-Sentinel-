@@ -49,7 +49,7 @@ _token_cache: list[dict] = []
 _cache_lock = asyncio.Lock()
 _REFRESH_INTERVAL = 300  # 5 minutes
 _TARGET_TOKENS = 20
-_SCAN_CONCURRENCY = 3
+_SCAN_CONCURRENCY = 2
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +379,14 @@ def _map_token_list_item(result: CollectionResult) -> dict:
     else:
         color = "#00e5a0"
 
+    # Risk label for 3-tier display
+    if risk_score >= 70:
+        risk_label = "DANGER"
+    elif risk_score >= 40:
+        risk_label = "MODERATE"
+    else:
+        risk_label = "SAFE"
+
     return {
         "id": result.mint,
         "name": f.get("token_name") or "Unknown",
@@ -387,6 +395,7 @@ def _map_token_list_item(result: CollectionResult) -> dict:
         "holders": 0,
         "liquidity": liquidity,
         "riskScore": risk_score,
+        "riskLabel": risk_label,
         "color": color,
         "geckoTerminalUrl": f"https://www.geckoterminal.com/solana/tokens/{result.mint}",
         "price": _first(f.get("jup_price_usd"), f.get("gt_base_token_price_usd")),
@@ -399,6 +408,48 @@ def _map_token_list_item(result: CollectionResult) -> dict:
 # Background token discovery + scanning
 # ---------------------------------------------------------------------------
 
+# Well-known tokens to seed the dashboard with variety (mix of risk levels)
+_SEED_TOKENS = [
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
+    "So11111111111111111111111111111111111111112",      # Wrapped SOL
+    "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",  # BONK
+    "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",   # JUP
+    "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",  # WIF
+    "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",  # POPCAT
+]
+
+
+async def _extract_mints_from_pools(data: dict, seen: set[str]) -> list[str]:
+    """Extract mint addresses from a GeckoTerminal pools API response."""
+    mints = []
+    for pool in data.get("data") or []:
+        relationships = pool.get("relationships") or {}
+        base_token = (relationships.get("base_token") or {}).get("data") or {}
+        token_id = base_token.get("id") or ""
+        mint = token_id[len("solana_"):] if token_id.startswith("solana_") else token_id
+        if mint and mint not in seen:
+            seen.add(mint)
+            mints.append(mint)
+    return mints
+
+
+async def _fetch_trending_pool_mints(target: int) -> list[str]:
+    """Fetch mint addresses from GeckoTerminal trending_pools (established, higher-liq tokens)."""
+    url = "https://api.geckoterminal.com/api/v2/networks/solana/trending_pools"
+    mints: list[str] = []
+    seen: set[str] = set()
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.get(url, headers={"Accept": "application/json"})
+            resp.raise_for_status()
+            mints = await _extract_mints_from_pools(resp.json(), seen)
+        except Exception as e:
+            logger.warning(f"trending_pools failed: {e}")
+
+    return mints[:target]
+
+
 async def _fetch_new_pool_mints(target: int) -> list[str]:
     """Fetch mint addresses from GeckoTerminal new_pools endpoint."""
     url = "https://api.geckoterminal.com/api/v2/networks/solana/new_pools"
@@ -407,7 +458,7 @@ async def _fetch_new_pool_mints(target: int) -> list[str]:
     page = 1
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        while len(mints) < target and page <= 5:
+        while len(mints) < target and page <= 3:
             try:
                 resp = await client.get(
                     url,
@@ -415,24 +466,11 @@ async def _fetch_new_pool_mints(target: int) -> list[str]:
                     headers={"Accept": "application/json"},
                 )
                 resp.raise_for_status()
-                data = resp.json()
+                new = await _extract_mints_from_pools(resp.json(), seen)
+                mints.extend(new)
             except Exception as e:
                 logger.warning(f"new_pools page {page} failed: {e}")
                 break
-
-            pools = data.get("data") or []
-            if not pools:
-                break
-
-            for pool in pools:
-                relationships = pool.get("relationships") or {}
-                base_token = (relationships.get("base_token") or {}).get("data") or {}
-                token_id = base_token.get("id") or ""
-                mint = token_id[len("solana_"):] if token_id.startswith("solana_") else token_id
-                if mint and mint not in seen:
-                    seen.add(mint)
-                    mints.append(mint)
-
             page += 1
             await asyncio.sleep(0.5)
 
@@ -440,19 +478,47 @@ async def _fetch_new_pool_mints(target: int) -> list[str]:
 
 
 async def _refresh_token_cache():
-    """Fetch new pool mints and scan each, updating the global cache."""
+    """Fetch a diversified mix of tokens: trending + new pools + seed tokens."""
     global _token_cache
-    logger.info("Refreshing token cache...")
+    logger.info("Refreshing token cache (diversified feed)...")
 
+    all_mints: list[str] = []
+    seen: set[str] = set()
+
+    # 1) Seed tokens (known established tokens for baseline variety)
+    for mint in _SEED_TOKENS:
+        if mint not in seen:
+            seen.add(mint)
+            all_mints.append(mint)
+
+    # 2) Trending pools (established, higher-liq tokens — mixed risk)
+    #    Small delay to avoid GeckoTerminal rate limits on startup
+    await asyncio.sleep(2)
     try:
-        mints = await _fetch_new_pool_mints(target=_TARGET_TOKENS)
+        trending = await _fetch_trending_pool_mints(target=12)
+        for mint in trending:
+            if mint not in seen:
+                seen.add(mint)
+                all_mints.append(mint)
+    except Exception as e:
+        logger.error(f"Failed to fetch trending pool mints: {e}")
+
+    # 3) New pools (freshest launches — likely high risk)
+    await asyncio.sleep(2)
+    try:
+        new_pools = await _fetch_new_pool_mints(target=10)
+        for mint in new_pools:
+            if mint not in seen:
+                seen.add(mint)
+                all_mints.append(mint)
     except Exception as e:
         logger.error(f"Failed to fetch new pool mints: {e}")
+
+    if not all_mints:
+        logger.warning("No mints discovered from any source")
         return
 
-    if not mints:
-        logger.warning("No mints discovered")
-        return
+    logger.info(f"Scanning {len(all_mints)} tokens ({len(_SEED_TOKENS)} seed + trending + new)")
 
     sem = asyncio.Semaphore(_SCAN_CONCURRENCY)
     results: list[dict] = []
@@ -466,16 +532,34 @@ async def _refresh_token_cache():
             except Exception as e:
                 logger.error(f"Failed to scan {mint[:12]}...: {e}")
 
-    tasks = [asyncio.create_task(_scan_one(mint)) for mint in mints]
+    tasks = [asyncio.create_task(_scan_one(mint)) for mint in all_mints[:_TARGET_TOKENS + 5]]
     await asyncio.gather(*tasks)
 
+    # Sort: safe first (proves model works), then moderate, then danger
+    # Within each tier, sort by liquidity descending (most impressive first)
+    def _sort_key(t):
+        score = t.get("riskScore", 0)
+        liq = t.get("liquidity", 0)
+        if score < 40:
+            tier = 0  # SAFE first
+        elif score < 70:
+            tier = 1  # MODERATE second
+        else:
+            tier = 2  # DANGER last
+        return (tier, -liq)
+
     async with _cache_lock:
-        _token_cache = sorted(
-            results,
-            key=lambda t: t.get("poolAgeHours") if t.get("poolAgeHours") is not None else float("inf"),
-        )
+        _token_cache = sorted(results, key=_sort_key)
 
     logger.info(f"Token cache refreshed: {len(_token_cache)} tokens")
+
+    # Log score distribution
+    scores = [t.get("riskScore", 0) for t in _token_cache]
+    if scores:
+        high = sum(1 for s in scores if s >= 70)
+        med = sum(1 for s in scores if 40 <= s < 70)
+        low = sum(1 for s in scores if s < 40)
+        logger.info(f"Score distribution: {high} DANGER / {med} MODERATE / {low} SAFE")
 
     # Push to WebSocket clients
     if _ws_mgr.count > 0:

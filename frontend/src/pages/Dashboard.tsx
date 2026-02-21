@@ -23,7 +23,8 @@ const Dashboard = () => {
   }, [load]);
 
   const poolCount = tokens.length;
-  const rugCount = tokens.filter((t) => t.riskScore > 50).length;
+  const rugCount = tokens.filter((t) => t.riskScore >= 70).length;
+  const safeCount = tokens.filter((t) => t.riskScore < 40).length;
   const rugPct = poolCount > 0 ? ((rugCount / poolCount) * 100).toFixed(1) : "0.0";
 
   return (
