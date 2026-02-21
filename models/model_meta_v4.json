@@ -1,0 +1,167 @@
+{
+  "model_version": "v4_live_only",
+  "algorithm": "XGBClassifier",
+  "n_estimators": 600,
+  "max_depth": 7,
+  "learning_rate": 0.05,
+  "training_samples": 19512,
+  "test_samples": 28557,
+  "metrics": {
+    "auc_roc": 0.999,
+    "mcc": 0.9738,
+    "avg_precision": 0.9985,
+    "optimal_threshold": 0.308,
+    "optimal_f1": 0.9861
+  },
+  "features_count": 77,
+  "feature_categories": {
+    "Base metadata": 12,
+    "Derived": 6,
+    "Name eng.": 9,
+    "Symbol eng.": 5,
+    "Pool time": 6,
+    "Supply eng.": 7,
+    "Liq eng.": 4,
+    "RugCheck": 17,
+    "GeckoTerminal": 2,
+    "GoPlus": 3,
+    "v4 new": 6
+  },
+  "design_philosophy": "Trained on ONLY features available at live scan time. No deployer history (unavailable), no post-outcome leakage. Sparse features (RugCheck 2%, GeckoTerminal 16%) included with XGBoost native NaN handling \u2014 model learns optimal missing-value routing.",
+  "vs_v3": "v3 had AUC=0.9995 but was 93% blind in production (deployer features accounted for 89% of importance but were unavailable at scan time). v4 uses fewer features but ALL of them work in production.",
+  "top_features": [
+    [
+      "derived_metadata_completeness",
+      0.539588
+    ],
+    [
+      "feat_name_is_empty",
+      0.130534
+    ],
+    [
+      "feat_name_length",
+      0.093571
+    ],
+    [
+      "feat_name_frequency",
+      0.09003
+    ],
+    [
+      "feat_symbol_frequency",
+      0.022821
+    ],
+    [
+      "IS_MUTABLE",
+      0.021299
+    ],
+    [
+      "feat_name_has_scam_word",
+      0.020036
+    ],
+    [
+      "HAS_JSON_URI",
+      0.015528
+    ],
+    [
+      "v4_metadata_quality",
+      0.014162
+    ],
+    [
+      "NUM_LIQUIDITY_ADDS",
+      0.012545
+    ],
+    [
+      "feat_symbol_length",
+      0.006802
+    ],
+    [
+      "derived_avg_add_size",
+      0.003419
+    ],
+    [
+      "v4_authority_risk_score",
+      0.003216
+    ],
+    [
+      "feat_supply_log",
+      0.002862
+    ],
+    [
+      "derived_token_std_rug_rate",
+      0.002534
+    ],
+    [
+      "TOKEN_SUPPLY",
+      0.001966
+    ],
+    [
+      "derived_log_supply",
+      0.001877
+    ],
+    [
+      "feat_name_word_count",
+      0.001788
+    ],
+    [
+      "derived_uri_domain_rug_rate",
+      0.001736
+    ],
+    [
+      "derived_supply_decimal_ratio",
+      0.001679
+    ],
+    [
+      "TOTAL_ADDED_LIQUIDITY",
+      0.001426
+    ],
+    [
+      "feat_name_all_caps",
+      0.001414
+    ],
+    [
+      "TOKEN_DECIMALS",
+      0.001218
+    ],
+    [
+      "feat_supply_to_liq_ratio",
+      0.001143
+    ],
+    [
+      "feat_symbol_all_caps",
+      0.001013
+    ],
+    [
+      "feat_pool_month",
+      0.000936
+    ],
+    [
+      "feat_pool_day_of_week",
+      0.000873
+    ],
+    [
+      "v4_liq_supply_log_ratio",
+      0.000864
+    ],
+    [
+      "feat_liq_log",
+      0.000794
+    ],
+    [
+      "feat_pool_days_since_2022",
+      0.000613
+    ]
+  ],
+  "category_importance": {
+    "Base metadata": 5.4,
+    "Derived": 55.1,
+    "Name eng.": 33.7,
+    "Symbol eng.": 3.1,
+    "Pool time": 0.3,
+    "Supply eng.": 0.4,
+    "Liq eng.": 0.1,
+    "RugCheck": 0.0,
+    "GeckoTerminal": 0.0,
+    "GoPlus": 0.0,
+    "v4 new": 1.9
+  }
+}

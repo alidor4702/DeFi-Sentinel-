@@ -29,6 +29,10 @@ import os  # noqa: E402
 import json as json_mod  # noqa: E402
 import httpx  # noqa: E402
 
+# Load .env from project root
+from dotenv import load_dotenv  # noqa: E402
+load_dotenv(_PROJECT_ROOT / ".env")
+
 from live_data.collector import collect_features, CollectionResult  # noqa: E402
 from ml_scorer import predict_rug_probability, get_model_meta  # noqa: E402
 
@@ -99,11 +103,11 @@ except ImportError:
     _stripe = None  # type: ignore
 
 _PLAN_PRICES = {
-    "pro": {"amount": 2900, "name": "Pro Plan", "interval": "month"},
-    "enterprise": {"amount": 49900, "name": "Enterprise Plan", "interval": "month"},
-    "pack-10": {"amount": 199, "name": "10 Scan Pack", "interval": None},
-    "pack-50": {"amount": 799, "name": "50 Scan Pack", "interval": None},
-    "pack-200": {"amount": 2499, "name": "200 Scan Pack", "interval": None},
+    "pro":      {"price_id": "price_1T3Gk57ouElHwHTvifJttL5b", "mode": "subscription"},
+    "enterprise": {"price_id": "price_1T3GkK7ouElHwHTvVgt3vOnR", "mode": "subscription"},
+    "pack-10":  {"price_id": "price_1T3GkW7ouElHwHTvz6GPpJ1A", "mode": "payment"},
+    "pack-50":  {"price_id": "price_1T3GlA7ouElHwHTvTKrYtRHd", "mode": "payment"},
+    "pack-200": {"price_id": "price_1T3Glh7ouElHwHTvSVmOv4By", "mode": "payment"},
 }
 
 
@@ -696,24 +700,14 @@ async def create_checkout(body: dict):
     cfg = _PLAN_PRICES[plan]
     origin = "http://localhost:5173"
 
-    line_item: dict = {
-        "price_data": {
-            "currency": "usd",
-            "product_data": {"name": f"DeFi Sentinel — {cfg['name']}"},
-            "unit_amount": cfg["amount"],
-        },
-        "quantity": 1,
-    }
-    if cfg["interval"]:
-        line_item["price_data"]["recurring"] = {"interval": cfg["interval"]}
-
     try:
         session = _stripe.checkout.Session.create(
-            mode="subscription" if cfg["interval"] else "payment",
-            line_items=[line_item],
-            success_url=f"{origin}/connect?checkout=success",
-            cancel_url=f"{origin}/connect?checkout=cancel",
+            mode=cfg["mode"],
+            line_items=[{"price": cfg["price_id"], "quantity": 1}],
+            success_url=f"{origin}/pricing?checkout=success",
+            cancel_url=f"{origin}/pricing?checkout=cancel",
         )
         return {"url": session.url}
     except Exception as e:
+        logger.error("Stripe checkout error: %s", e)
         raise HTTPException(status_code=502, detail=str(e))
