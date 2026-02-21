@@ -55,6 +55,28 @@ const LivePoolMonitor = () => {
     return () => clearInterval(interval);
   }, [load, tokens.length]);
 
+  // Real-time WebSocket (enhances polling with instant push)
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    try {
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "tokens" && Array.isArray(msg.data)) {
+            setTokens(msg.data);
+            setError(false);
+            setLoading(false);
+          } else if (msg.type === "new_token" && msg.data) {
+            setTokens((prev) => [msg.data, ...prev].slice(0, 30));
+          }
+        } catch { /* ignore */ }
+      };
+    } catch { /* WS not available, polling continues */ }
+    return () => { try { ws?.close(); } catch {} };
+  }, []);
+
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="mb-4 flex items-center justify-between">

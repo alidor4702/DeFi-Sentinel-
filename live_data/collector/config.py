@@ -2,8 +2,10 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
-# Look for .env in live_data/ directory (parent of collector/)
-_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+# Look for .env — try live_data/ first, then project root
+_LIVE_DATA_DIR = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = _LIVE_DATA_DIR.parent
+_ENV_FILE = str(_LIVE_DATA_DIR / ".env") if (_LIVE_DATA_DIR / ".env").exists() else str(_PROJECT_ROOT / ".env")
 
 
 class CollectorSettings(BaseSettings):

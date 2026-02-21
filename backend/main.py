@@ -21,11 +21,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure project root is importable
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import os  # noqa: E402
+import json as json_mod  # noqa: E402
 import httpx  # noqa: E402
 
 from live_data.collector import collect_features, CollectionResult  # noqa: E402
+from ml_scorer import predict_rug_probability, get_model_meta  # noqa: E402
 
 logger = logging.getLogger("backend")
 logging.basicConfig(
@@ -41,6 +46,65 @@ _cache_lock = asyncio.Lock()
 _REFRESH_INTERVAL = 300  # 5 minutes
 _TARGET_TOKENS = 20
 _SCAN_CONCURRENCY = 3
+
+
+# ---------------------------------------------------------------------------
+# WebSocket manager
+# ---------------------------------------------------------------------------
+from starlette.websockets import WebSocket, WebSocketDisconnect  # noqa: E402
+
+
+class _WSManager:
+    """Manage active WebSocket connections for live push."""
+
+    def __init__(self):
+        self._connections: list[WebSocket] = []
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self._connections.append(ws)
+
+    def disconnect(self, ws: WebSocket):
+        if ws in self._connections:
+            self._connections.remove(ws)
+
+    async def broadcast(self, data: dict):
+        dead: list[WebSocket] = []
+        for ws in self._connections:
+            try:
+                await ws.send_json(data)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
+
+    @property
+    def count(self) -> int:
+        return len(self._connections)
+
+
+_ws_mgr = _WSManager()
+
+
+# ---------------------------------------------------------------------------
+# Stripe setup
+# ---------------------------------------------------------------------------
+try:
+    import stripe as _stripe
+
+    _stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+    _STRIPE_AVAILABLE = bool(_stripe.api_key)
+except ImportError:
+    _STRIPE_AVAILABLE = False
+    _stripe = None  # type: ignore
+
+_PLAN_PRICES = {
+    "pro": {"amount": 2900, "name": "Pro Plan", "interval": "month"},
+    "enterprise": {"amount": 49900, "name": "Enterprise Plan", "interval": "month"},
+    "pack-10": {"amount": 199, "name": "10 Scan Pack", "interval": None},
+    "pack-50": {"amount": 799, "name": "50 Scan Pack", "interval": None},
+    "pack-200": {"amount": 2499, "name": "200 Scan Pack", "interval": None},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +320,7 @@ def _map_scan_result(result: CollectionResult) -> dict:
     """Map a CollectionResult to the frontend ScanResultData shape."""
     f = result.features
 
-    risk_score = _heuristic_risk_score(f)
+    rug_prob, risk_score = predict_rug_probability(f)
     verdict = "SAFE" if risk_score < 50 else "DANGER"
 
     price = _first(f.get("jup_price_usd"), f.get("gt_base_token_price_usd"))
@@ -280,7 +344,7 @@ def _map_scan_result(result: CollectionResult) -> dict:
         "marketCap": market_cap,
         "geckoTerminalUrl": f"https://www.geckoterminal.com/solana/tokens/{result.mint}",
         "metrics": {
-            "mlConfidence": 0,
+            "mlConfidence": round(rug_prob * 100, 1),
             "holders": 0,
             "liquidity": liquidity,
             "poolAge": pool_age_days,
@@ -300,7 +364,7 @@ def _map_scan_result(result: CollectionResult) -> dict:
 def _map_token_list_item(result: CollectionResult) -> dict:
     """Map a CollectionResult to the LivePoolMonitor token shape."""
     f = result.features
-    risk_score = _heuristic_risk_score(f)
+    _, risk_score = predict_rug_probability(f)
     liquidity = _first(f.get("gt_reserve_usd"), f.get("rc_total_market_liquidity")) or 0
 
     # Determine color from risk
@@ -409,6 +473,10 @@ async def _refresh_token_cache():
 
     logger.info(f"Token cache refreshed: {len(_token_cache)} tokens")
 
+    # Push to WebSocket clients
+    if _ws_mgr.count > 0:
+        await _ws_mgr.broadcast({"type": "tokens", "data": _token_cache})
+
 
 async def _background_refresh_loop():
     """Periodically refresh the token cache."""
@@ -424,18 +492,125 @@ async def _background_refresh_loop():
 # FastAPI app
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Solana WebSocket listener (real-time new token detection)
+# ---------------------------------------------------------------------------
+
+async def _resolve_mint_from_sig(sig: str, rpc_url: str) -> str | None:
+    """Get the new token mint address from a transaction signature."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": "resolve-mint",
+        "method": "getTransaction",
+        "params": [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}],
+    }
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        resp = await client.post(rpc_url, json=payload)
+        data = resp.json()
+    result = data.get("result")
+    if not result:
+        return None
+    # Check outer and inner instructions for InitializeMint
+    for ix_list in [
+        result.get("transaction", {}).get("message", {}).get("instructions", []),
+        *[g.get("instructions", []) for g in result.get("meta", {}).get("innerInstructions", [])],
+    ]:
+        for ix in ix_list:
+            parsed = ix.get("parsed")
+            if isinstance(parsed, dict) and parsed.get("type") in ("initializeMint", "initializeMint2"):
+                mint = parsed.get("info", {}).get("mint")
+                if mint:
+                    return mint
+    return None
+
+
+async def _solana_ws_listener():
+    """Listen for new Solana token events via Helius WebSocket."""
+    try:
+        import websockets
+    except ImportError:
+        logger.warning("websockets not installed — Solana WS listener disabled")
+        return
+
+    from live_data.collector.config import CollectorSettings
+
+    try:
+        settings = CollectorSettings()
+    except Exception:
+        logger.warning("No HELIUS_API_KEY — Solana WS listener disabled")
+        return
+
+    ws_url = f"wss://mainnet.helius-rpc.com/?api-key={settings.HELIUS_API_KEY}"
+    rpc_url = settings.helius_rpc_url
+    _TOKEN_PROGRAM = "TokenkegQEcnFiGhC7t8qkgAUNp84Xc7ELb8vxTG1VH6"
+    _new_mints: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
+
+    async def _process_queue():
+        """Scan newly discovered mints from WebSocket."""
+        while True:
+            mint = await _new_mints.get()
+            try:
+                result = await collect_features(mint)
+                item = _map_token_list_item(result)
+                async with _cache_lock:
+                    _token_cache.insert(0, item)
+                    if len(_token_cache) > 30:
+                        _token_cache[:] = _token_cache[:30]
+                if _ws_mgr.count > 0:
+                    await _ws_mgr.broadcast({"type": "new_token", "data": item})
+                logger.info(f"Solana WS: new token {item.get('symbol', '???')} risk={item.get('riskScore')}")
+            except Exception as e:
+                logger.error(f"Solana WS scan failed for {mint[:12]}: {e}")
+
+    asyncio.create_task(_process_queue())
+
+    while True:
+        try:
+            async with websockets.connect(ws_url, ping_interval=30, ping_timeout=10) as ws:
+                logger.info("✓ Connected to Solana WebSocket (Helius)")
+                await ws.send(json_mod.dumps({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "logsSubscribe",
+                    "params": [
+                        {"mentions": [_TOKEN_PROGRAM]},
+                        {"commitment": "confirmed"},
+                    ],
+                }))
+                async for raw in ws:
+                    try:
+                        msg = json_mod.loads(raw)
+                        value = (msg.get("params") or {}).get("result", {}).get("value", {})
+                        logs = value.get("logs") or []
+                        sig = value.get("signature")
+                        if sig and any("InitializeMint" in l for l in logs):
+                            try:
+                                mint = await _resolve_mint_from_sig(sig, rpc_url)
+                                if mint and not _new_mints.full():
+                                    await _new_mints.put(mint)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.warning(f"Solana WS disconnected: {e}, reconnecting in 10s")
+            await asyncio.sleep(10)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_background_refresh_loop())
+    refresh_task = asyncio.create_task(_background_refresh_loop())
+    solana_task = asyncio.create_task(_solana_ws_listener())
     yield
-    task.cancel()
+    refresh_task.cancel()
+    solana_task.cancel()
 
 
 app = FastAPI(title="DeFi Sentinel API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -469,3 +644,76 @@ async def refresh_tokens():
     await _refresh_token_cache()
     async with _cache_lock:
         return _token_cache
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    """WebSocket for real-time token updates."""
+    await _ws_mgr.connect(ws)
+    try:
+        # Send current cache immediately
+        async with _cache_lock:
+            await ws.send_json({"type": "tokens", "data": _token_cache})
+        # Keep alive — wait for disconnect
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _ws_mgr.disconnect(ws)
+
+
+@app.get("/api/model-stats")
+async def model_stats():
+    """Return ML model metadata and performance metrics."""
+    meta = get_model_meta()
+    if not meta:
+        return {"loaded": False, "message": "ML model not loaded"}
+    return {
+        "loaded": True,
+        "version": meta.get("model_version"),
+        "features_count": meta.get("features_count"),
+        "auc_roc": meta.get("metrics", {}).get("auc_roc"),
+        "mcc": meta.get("metrics", {}).get("mcc"),
+        "deployer_importance_pct": meta.get("deployer_importance_pct"),
+        "top_features": meta.get("top_features", [])[:10],
+    }
+
+
+@app.post("/api/create-checkout")
+async def create_checkout(body: dict):
+    """Create a Stripe checkout session."""
+    if not _STRIPE_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe not configured — add STRIPE_SECRET_KEY to .env",
+        )
+
+    plan = body.get("plan", "")
+    if plan not in _PLAN_PRICES:
+        raise HTTPException(status_code=400, detail=f"Unknown plan: {plan}")
+
+    cfg = _PLAN_PRICES[plan]
+    origin = "http://localhost:5173"
+
+    line_item: dict = {
+        "price_data": {
+            "currency": "usd",
+            "product_data": {"name": f"DeFi Sentinel — {cfg['name']}"},
+            "unit_amount": cfg["amount"],
+        },
+        "quantity": 1,
+    }
+    if cfg["interval"]:
+        line_item["price_data"]["recurring"] = {"interval": cfg["interval"]}
+
+    try:
+        session = _stripe.checkout.Session.create(
+            mode="subscription" if cfg["interval"] else "payment",
+            line_items=[line_item],
+            success_url=f"{origin}/connect?checkout=success",
+            cancel_url=f"{origin}/connect?checkout=cancel",
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

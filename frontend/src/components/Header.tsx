@@ -6,6 +6,7 @@ const navItems = [
   { label: "Dashboard", path: "/" },
   { label: "Scan Token", path: "/scan" },
   { label: "Watchlist", path: "/watchlist" },
+  { label: "Connect", path: "/connect" },
 ];
 
 const Header = () => {

@@ -1,0 +1,123 @@
+{
+  "model_version": "v3_deployer",
+  "algorithm": "XGBClassifier",
+  "n_estimators": 400,
+  "max_depth": 6,
+  "training_samples": 19512,
+  "test_samples": 28557,
+  "metrics": {
+    "auc_roc": 0.9995445906775269,
+    "mcc": 0.9768943507272941
+  },
+  "features_count": 54,
+  "deployer_features": [
+    "feat_deployer_past_tokens",
+    "feat_deployer_past_rugs",
+    "feat_deployer_past_rug_rate",
+    "feat_deployer_past_labeled",
+    "feat_deployer_past_is_serial"
+  ],
+  "deployer_importance_pct": 89.04379272460938,
+  "top_features": [
+    [
+      "feat_deployer_past_labeled",
+      0.552912712097168
+    ],
+    [
+      "feat_deployer_past_tokens",
+      0.2969680428504944
+    ],
+    [
+      "IS_MUTABLE",
+      0.01848985068500042
+    ],
+    [
+      "feat_deployer_past_is_serial",
+      0.016482383012771606
+    ],
+    [
+      "feat_name_frequency",
+      0.01425960659980774
+    ],
+    [
+      "feat_deployer_past_rug_rate",
+      0.013773622922599316
+    ],
+    [
+      "feat_deployer_past_rugs",
+      0.010301271453499794
+    ],
+    [
+      "HAS_IMAGE",
+      0.009662866592407227
+    ],
+    [
+      "HAS_METADATA",
+      0.009608670137822628
+    ],
+    [
+      "NUM_LIQUIDITY_ADDS",
+      0.007095644250512123
+    ],
+    [
+      "feat_symbol_frequency",
+      0.006868004333227873
+    ],
+    [
+      "derived_uri_domain_rug_rate",
+      0.006330147385597229
+    ],
+    [
+      "feat_symbol_length",
+      0.0042314413003623486
+    ],
+    [
+      "MINT_AUTHORITY_ACTIVE",
+      0.0039787013083696365
+    ],
+    [
+      "feat_pool_days_since_2022",
+      0.003420260502025485
+    ],
+    [
+      "feat_name_all_caps",
+      0.0026966938748955727
+    ],
+    [
+      "HAS_JSON_URI",
+      0.002438923576846719
+    ],
+    [
+      "derived_metadata_completeness",
+      0.0022472762502729893
+    ],
+    [
+      "feat_name_length",
+      0.0020636224653571844
+    ],
+    [
+      "TOKEN_SUPPLY",
+      0.001513571827672422
+    ],
+    [
+      "TOKEN_DECIMALS",
+      0.001300931442528963
+    ],
+    [
+      "derived_supply_decimal_ratio",
+      0.0012884119059890509
+    ],
+    [
+      "TOTAL_ADDED_LIQUIDITY",
+      0.0012749453308060765
+    ],
+    [
+      "NUM_CREATORS",
+      0.0012386245653033257
+    ],
+    [
+      "feat_liq_trailing_zeros",
+      0.0012138871243223548
+    ]
+  ]
+}

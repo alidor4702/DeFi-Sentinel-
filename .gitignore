@@ -26,7 +26,11 @@ frontend/dist/
 Thumbs.db
 
 # Data (large files - keep CSVs tracked via Git LFS if needed)
-# data/solrpds_dataset/json/  # JSON versions are large, consider excluding
+data/solrpds_dataset/
+data/raw/
+data/enriched/*.csv
+data/enriched/_*cache*
+data/enriched/logs/
 
 # ML models
 backend/app/ml/*.joblib
