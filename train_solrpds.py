@@ -111,8 +111,8 @@ TARGET = "INACTIVITY_STATUS"
 BASE_FEATURES = [
     "TOTAL_ADDED_LIQUIDITY",
     "TOTAL_REMOVED_LIQUIDITY",
-    "NUMBER_OF_LIQUIDITY_ADDS",
-    "NUMBER_OF_LIQUIDITY_REMOVES",
+    "NUM_LIQUIDITY_ADDS",
+    "NUM_LIQUIDITY_REMOVES",
     "ADD_TO_REMOVE_RATIO",
 ]
 
@@ -151,8 +151,8 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     log_map = {
         "LOG_TOTAL_ADDED": "TOTAL_ADDED_LIQUIDITY",
         "LOG_TOTAL_REMOVED": "TOTAL_REMOVED_LIQUIDITY",
-        "LOG_NUM_ADDS": "NUMBER_OF_LIQUIDITY_ADDS",
-        "LOG_NUM_REMOVES": "NUMBER_OF_LIQUIDITY_REMOVES",
+        "LOG_NUM_ADDS": "NUM_LIQUIDITY_ADDS",
+        "LOG_NUM_REMOVES": "NUM_LIQUIDITY_REMOVES",
     }
     for new_col, src_col in log_map.items():
         if _safe_col(df, src_col):
