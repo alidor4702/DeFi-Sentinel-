@@ -25,14 +25,18 @@ frontend/dist/
 .DS_Store
 Thumbs.db
 
-# Data (large files - keep CSVs tracked via Git LFS if needed)
+# Data (large files)
 data/solrpds_dataset/
 data/raw/
 data/enriched/*.csv
 data/enriched/_*cache*
 data/enriched/logs/
+data/enriched/checkpoints/
+*.log
 
 # ML models
+models/*.joblib
+models/*.pkl
 backend/app/ml/*.joblib
 backend/app/ml/*.pkl
 
