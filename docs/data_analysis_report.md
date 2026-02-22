@@ -2,9 +2,9 @@
 
 > **Project:** DeFi Sentinel — Real-time AI Rug-Pull Detection for Solana  
 > **Team:** 2-person team, HackEurope 2026  
-> **Date:** February 21, 2026  
-> **Branch:** `data-ml`  
-> **Status:** EDA complete, Helius enrichment complete, label audit complete, feature analysis complete, XGBoost trained (AUC-ROC = 0.9736)
+> **Date:** February 22, 2026  
+> **Branch:** `main`  
+> **Status:** EDA complete, Helius enrichment complete, label audit complete, feature analysis complete, XGBoost v4 trained (AUC-ROC = 0.9990, 77 live features), FastAPI backend deployed, React frontend live
 
 ---
 
@@ -776,74 +776,90 @@ This validates our multi-source approach: relying solely on the paper's liquidit
 
 ## 11. AI Model Training Results
 
-With the enriched dataset and verified labels, we trained an XGBoost classifier using only **live-equivalent features** — features that would be available in real-time when a user submits a token for scanning.
+We iterated through four model versions, culminating in **XGBoost v4** — trained exclusively on **live-equivalent features** (features available in real-time when a user submits a token for scanning). This is the production model powering the DeFi Sentinel backend.
 
 **Training script:** [`scripts/audit_and_train.py`](../scripts/audit_and_train.py)
 
-### 11.1 Training Configuration
+### 11.1 Model Evolution
+
+| Version | AUC-ROC | Features | Key Issue |
+|---------|---------|----------|-----------|
+| v1 | 0.9736 | 36 | Good baseline, but limited feature engineering |
+| v2 | 0.9891 | 52 | Added RugCheck/GeckoTerminal features |
+| v3 | 0.9995 | 89 | 93% of importance from deployer features — **unavailable at live scan time** |
+| **v4** | **0.9990** | **77** | **All features work in production**. No deployer history dependency |
+
+v3's apparent AUC of 0.9995 was misleading: 89% of model importance came from deployer-history features (`creator_wallet_age_hours`, `creator_prev_tokens_rugged`, etc.) that cannot be computed at live scan time due to Helius RPC latency and rate limits. v4 removes all deployer features and achieves near-identical AUC using only features available in real-time.
+
+### 11.2 Training Configuration (v4 — Production Model)
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
 | **Algorithm** | XGBoost (gradient-boosted trees) | Industry standard for tabular data with native missing-value handling |
-| **Target** | Binary: RUG (VERIFIED_RUG + LIKELY_RUG) vs LEGIT (LIKELY_LEGIT) | High-confidence labels only — dropped 86,705 uncertain rows |
+| **Target** | Binary: RUG (VERIFIED_RUG + LIKELY_RUG) vs LEGIT (LIKELY_LEGIT) | High-confidence labels only — dropped uncertain rows |
 | **Split** | Temporal: train < 2024, test = 2024 | Forward validation — "can we catch 2024 rugs with pre-2024 training?" |
-| **Train set** | 6,365 rows | 2021–2023 data |
-| **Test set** | 23,238 rows | 2024 data (unseen during training) |
-| **Features** | 36 live-equivalent | Excluded historical-only features, signal/label columns, identifiers |
+| **Train set** | 19,512 rows | 2021–2023 data |
+| **Test set** | 28,557 rows | 2024 data (unseen during training) |
+| **Features** | 77 live-equivalent | All available at scan time — no deployer history, no post-outcome leakage |
 | **Imbalance** | `scale_pos_weight` = class ratio | Compensates for class imbalance |
-| **Trees** | 300, max_depth=6 | Standard configuration |
+| **Trees** | 600, max_depth=7, lr=0.05 | Tuned for higher feature count |
+| **Missing values** | XGBoost native NaN handling | Sparse features (RugCheck 2%, GeckoTerminal 16%) handled via learned optimal routing |
 
-### 11.2 Results
+### 11.3 Results (v4)
 
 | Metric | Value |
 |--------|-------|
-| **AUC-ROC** | **0.9736** |
-| **AUC-PR** | **0.9689** |
-| **Precision (rug)** | **95.5%** |
-| **Recall (rug)** | **77.4%** |
-| **MCC** | **0.77** |
+| **AUC-ROC** | **0.9990** |
+| **Average Precision** | **0.9985** |
+| **Optimal F1** | **0.9861** |
+| **Optimal Threshold** | **0.308** |
+| **MCC** | **0.9738** |
 
-**Verdict: 🟢 EXCELLENT** — the model strongly separates rugs from legit tokens.
+**Verdict: 🟢 NEAR-PERFECT** — the model achieves exceptional separation between rugs and legit tokens using only live-scannable features.
 
-- **95.5% precision** means when we flag a token as a rug, we're right 19 out of 20 times
-- **77.4% recall** means we catch 3 out of 4 rug pulls
-- **AUC-ROC of 0.97** means the model ranks rugs above legit tokens 97% of the time across all thresholds
+- **AUC-ROC of 0.999** means the model ranks rugs above legit tokens 99.9% of the time across all thresholds
+- **MCC of 0.974** (Matthews Correlation Coefficient) confirms strong true positive and true negative performance — not inflated by class imbalance
+- **Optimal threshold of 0.308** — the model is calibrated to flag tokens early, prioritizing user safety
+- All 77 features are **available at live scan time** — no gap between training and production
 
 ![Model Results Summary](../data/figures/model_results_summary.png)
-*Figure 11.1: Complete model results card — metrics, top 10 features, training configuration, verdict, and roadmap to 90%+ recall.*
+*Figure 11.1: Complete model results card — metrics, top 10 features, training configuration, verdict, and roadmap.*
 
-### 11.3 Feature Importance (from XGBoost gain)
+### 11.4 Feature Importance (from XGBoost gain — v4)
 
-| Rank | Feature | Importance | Source | What It Captures |
-|------|---------|------------|--------|------------------|
-| 1 | `TOKEN_PRICE_USD` | **37.0%** | Helius | Dead tokens have no price; live tokens do |
-| 2 | `HAS_JSON_URI` | **18.9%** | Helius | Pump.fun auto-generates URIs; older legit tokens lack them |
-| 3 | `gp_lp_count` | **16.8%** | GoPlus | Rug tokens have 1–2 pools; legit tokens have 5–10+ |
-| 4 | `HAS_METADATA` | 5.0% | Helius | No metadata = low-effort token |
-| 5 | `MINT_AUTHORITY_ACTIVE` | 4.1% | Helius | Active mint authority = can inflate supply |
-| 6 | `TOKEN_SUPPLY` | 3.8% | Helius | Inflated supply = rug indicator |
-| 7 | `gp_top3_holder_pct` | 3.2% | GoPlus | >50% held by top 3 = rug |
-| 8 | `IS_MUTABLE` | 2.5% | Helius | Mutable = can change identity |
-| 9 | `TOKEN_DECIMALS` | 2.3% | Helius | Unusual decimals = suspicious |
-| 10 | `HAS_IMAGE` | 1.8% | Helius | No image = low-effort scam |
+| Rank | Feature | Importance | Category | What It Captures |
+|------|---------|------------|----------|------------------|
+| 1 | `derived_metadata_completeness` | **53.9%** | Derived | Composite: image + description + website + social links. Low-effort scam tokens lack these. |
+| 2 | `feat_name_is_empty` | **13.1%** | Name eng. | Empty token name = low-effort rug factory output |
+| 3 | `feat_name_length` | **9.4%** | Name eng. | Short/generic names correlate with scams |
+| 4 | `feat_name_frequency` | **9.0%** | Name eng. | How common the name is — duplicated names = copycats |
+| 5 | `feat_symbol_frequency` | **2.3%** | Symbol eng. | Duplicate symbols = copycat tokens |
+| 6 | `IS_MUTABLE` | **2.1%** | Base metadata | Mutable metadata = can change token identity post-launch |
+| 7 | `feat_name_has_scam_word` | **2.0%** | Name eng. | Contains "moon", "elon", "safe", "1000x", etc. |
+| 8 | `HAS_JSON_URI` | **1.6%** | Base metadata | Pump.fun auto-generates URIs; older legit tokens lack them |
+| 9 | `v4_metadata_quality` | **1.4%** | v4 new | Composite: metadata + image + URI + !mutable + !mint_auth |
+| 10 | `NUM_LIQUIDITY_ADDS` | **1.3%** | Base metadata | Single add = textbook rug setup |
 
-### 11.4 Source Contribution to Model
+### 11.5 Category Contribution to Model (v4)
 
-| Source | Total Importance | Features Used | Assessment |
-|--------|-----------------|---------------|------------|
-| **Helius** | **77.1%** | 12 features | 🏆 Backbone — 100% fill, carries the model |
-| **GoPlus** | **22.9%** | 11 features | 🥈 Power features — `gp_lp_count` alone = 16.8% |
-| **GeckoTerminal** | **0.0%** | 13 features | ⚠️ Too sparse (6 mints) — needs enrichment |
+| Category | Total Importance | Features | Assessment |
+|----------|-----------------|----------|------------|
+| **Derived** | **55.1%** | 6 features | 🏆 `metadata_completeness` alone = 53.9%. Composite signals are the strongest. |
+| **Name engineering** | **33.7%** | 9 features | 🥈 Token name analysis captures scam patterns (empty, scam words, length) |
+| **Base metadata** | **5.4%** | 12 features | Helius on-chain data — `IS_MUTABLE`, `HAS_JSON_URI` |
+| **Symbol engineering** | **3.1%** | 5 features | Symbol duplicates and characteristics |
+| **v4 new** | **1.9%** | 6 features | `metadata_quality`, `authority_risk_score`, etc. |
+| **Supply/Liq/Pool/RC/GT/GP** | **0.8%** | 39 features | Important for edge cases; XGBoost NaN routing handles sparsity |
 
-**Key Insight:** The model achieves AUC 0.97 using primarily Helius features (77.1%). This means our baseline model is **production-ready with just one API call** (Helius DAS batch). Adding GoPlus data improves precision further, and enriching GeckoTerminal + RugCheck data will improve recall from 77.4% toward 90%+.
+**Key Insight:** v4 achieves AUC 0.999 by focusing on **metadata quality and token naming patterns** — features available with a single Helius DAS API call. The derived `metadata_completeness` feature (53.9% importance) captures whether the token creator invested effort in image, description, website, and social links. Rug factory tokens from pump.fun typically skip these. This is a novel finding: the **effort signal** (did the creator bother with metadata?) is more predictive than any single on-chain economic metric.
 
-### 11.5 Why Temporal Split Matters
+### 11.6 Why Temporal Split Matters
 
 A random 80/20 split lets the model see 2024 tokens during training, which inflates accuracy because token patterns evolve over time (the 2024 memecoin boom differs from the 2021–2022 DeFi era). Our temporal split asks: **"If we trained on everything before 2024, could we catch 2024 rugs?"**
 
-The answer is **yes** — AUC 0.97 on unseen 2024 data proves the model generalizes across market regimes. This is the real-world question, and it's what a quantitative trading firm like Susquehanna (Best Data prize sponsor) would expect.
+The answer is **yes** — AUC 0.999 on 28,557 unseen 2024 tokens proves the model generalizes across market regimes. With v4, we also validate that **all 77 features work at inference time** — no gap between training and production, unlike v3 where 89% of model importance was from unavailable deployer features.
 
-### 11.6 Leakage Prevention
+### 11.7 Leakage Prevention
 
 We carefully exclude columns that would cause data leakage:
 
@@ -855,51 +871,62 @@ We carefully exclude columns that would cause data leakage:
 | Identifiers | `MINT`, `LIQUIDITY_POOL_ADDRESS` | Would cause memorization |
 | Timestamps | `FIRST_POOL_ACTIVITY_TIMESTAMP`, `LAST_SWAP_TIMESTAMP` | Leaks temporal info |
 
-### 11.7 Path to 90%+ Recall
+### 11.8 Production Scoring Pipeline
 
-Current recall (77.4%) misses ~1 in 4 rugs. These are primarily:
+The v4 model is deployed in the DeFi Sentinel FastAPI backend (`backend/ml_scorer.py`). The scoring pipeline:
 
-1. **"Polished" rugs** — tokens with metadata, images, and price (look legit to Helius features)
-2. **Slow rugs** — drained over days/weeks, not instantly
-3. **Tokens without GoPlus data** — model falls back to Helius-only, losing the powerful `gp_lp_count` signal
+1. **Feature mapping** — `_map_v4()` maps live collector features → 77 model feature names, using `np.nan` for unavailable data
+2. **XGBoost prediction** — Native NaN handling routes missing features via learned optimal splits
+3. **Heuristic adjustment** — Light boost/penalty for strong live signals (RugCheck score, Jupiter listing, 24h volume, fresh creator wallet)
+4. **Established-token cap** — Tokens with $1M+ liquidity and 30d+ age are capped at max risk 25
+5. **Graceful degradation** — If ML model fails to load, falls back to enhanced heuristic scoring
 
-To push recall above 90%:
+### 11.9 Remaining Improvement Opportunities
 
 | Action | Expected Impact | Effort |
 |--------|----------------|--------|
-| Enrich RugCheck for 5K tokens | +5–8% recall (LP locking, holder concentration) | ~3 hours (free API) |
-| Enrich GoPlus for 5K tokens | +3–5% recall (fill from 11% → 50%+) | ~2 hours (free API) |
-| Add Creator Wallet features | +3–5% recall (creator history is top indicator) | ~4 hours (Helius RPC) |
-| Add Jupiter listing check | +2–3% recall (unlisted = suspicious) | ~30 minutes |
-| Add Derived features | +1–2% recall (no API calls, pure computation) | ~1 hour |
+| Enrich RugCheck for 5K+ tokens | Fill RC features (currently ~2%) → better LP lock detection | ~3 hours (free API) |
+| Enrich GoPlus for 5K+ tokens | Fill GP features (currently ~12%) → holder concentration | ~2 hours (free API) |
+| Add Creator Wallet features | Creator history is a top literature indicator | ~4 hours (Helius RPC) |
+| Add Jupiter listing check | `jup_strict_list` is a strong legitimacy signal | ~30 minutes |
+| Real-time retraining pipeline | Auto-retrain on confirmed rug events | Future work |
 
 ---
 
-## 12. Next Steps
+## 12. Current Status & Next Steps
 
-### Immediate Priority
+### Completed ✅
 
-1. ✅ ~~EDA + Helius enrichment~~ — complete
-2. ✅ ~~Label quality audit~~ — complete
-3. ✅ ~~82-feature spec coverage audit~~ — complete
-4. ✅ ~~Feature analysis + model training~~ — complete (AUC 0.9736)
-5. 🔲 **Export model + build FastAPI backend** — real-time scoring endpoint
-6. 🔲 **Connect frontend** — replace mock data with live API calls
+1. ✅ EDA + Helius enrichment (116K rows, 33K unique mints)
+2. ✅ Label quality audit (identified 10-17% false positives, 67.4% false negatives)
+3. ✅ Multi-signal confidence-scored labels (5-tier system)
+4. ✅ 82-feature spec coverage audit (46.3% coverage, 113 total features)
+5. ✅ Feature statistical analysis (GoPlus & Helius strongest predictors)
+6. ✅ XGBoost v1 → v4 model training (AUC 0.9736 → **0.9990**)
+7. ✅ FastAPI backend with real-time scoring (`/api/scan/{mint}`, `/api/tokens`, `/api/tokens/filter`)
+8. ✅ Live data collector pipeline (Helius DAS + RugCheck + GeckoTerminal + Jupiter)
+9. ✅ React frontend (dashboard, live feed, risk scanner, scan page, pricing, watchlist)
+10. ✅ Stripe integration (subscriptions + scan packs with real Stripe Checkout)
+11. ✅ Solana WebSocket listener (real-time new token detection via Helius)
+12. ✅ WebSocket broadcast to frontend clients
+13. ✅ ML model v4 production deployment (77 features, all live-scannable)
 
-### Enrichment (Background)
+### Enrichment (Background — Ongoing)
 
-7. 🔲 Enrich RugCheck for 5K tokens (~3 hours)
-8. 🔲 Enrich GoPlus for 5K tokens (~2 hours)
-9. 🔲 Add Creator Wallet features (Helius RPC)
-10. 🔲 Add Jupiter listing check
-11. 🔲 Retrain model with enriched data → target AUC 0.98+, recall 90%+
+14. 🔲 Enrich RugCheck for 5K+ tokens (~3 hours, rate-limited)
+15. 🔲 Enrich GoPlus for 5K+ tokens (~2 hours, rate-limited)
+16. 🔲 Add Creator Wallet features (Helius RPC)
+17. 🔲 Add Jupiter listing check
+18. 🔲 Retrain with enriched data → target AUC 0.999+
 
-### Production Architecture
+### Production Architecture (Deployed)
 
-12. **XGBoost primary model** — trained on enriched features, handles missing values natively
-13. **Rule-based fallback** — for tokens with insufficient API data, apply simple thresholds
-14. **Multi-model ensemble** — combine XGBoost confidence with RugCheck score + GoPlus data for final risk tier
-15. **Graceful degradation** — if an API is down, model scores with available features (trained on null patterns)
+- **XGBoost v4 primary model** — 77 live features, native NaN handling for sparse data
+- **Heuristic fallback** — enhanced rule-based scoring when ML model unavailable
+- **Established-token cap** — $1M+/30d+ tokens capped at low risk
+- **Graceful degradation** — if an API is down, model scores with available features
+- **Real-time feed** — GeckoTerminal trending + new pools + Solana WebSocket
+- **5 data sources** — Helius, RugCheck, GeckoTerminal, Jupiter, GoPlus
 
 ---
 
@@ -907,8 +934,9 @@ To push recall above 90%:
 
 ```
 DeFiSentinel/
-├── Architecture.md              # Full system design spec
+├── Architecture.md              # Full system design spec (686 lines)
 ├── README.md                    # Project overview
+├── CLAUDE.md                    # AI assistant context file
 ├── .env                         # API keys (gitignored)
 ├── .gitignore
 │
@@ -924,18 +952,22 @@ DeFiSentinel/
 │   │   ├── verified_labels.csv  # Label columns only
 │   │   ├── feature_analysis_results.csv  # Feature-by-feature stats
 │   │   └── checkpoints/         # API call checkpoints
-│   └── figures/                 # EDA plots + model evaluation plots
+│   └── figures/                 # 19 EDA + model evaluation + feature analysis plots
 │
 ├── docs/
-│   ├── SolRPDS_paper.pdf        # Original paper
+│   ├── SolRPDS_paper.pdf        # Original academic paper (CODASPY 2025)
 │   ├── SolRPDS_README.md        # Dataset readme
 │   ├── feature_list.md          # 82-feature live spec
-│   └── data_analysis_report.md  # This report
+│   └── data_analysis_report.md  # This report (960+ lines)
 │
 ├── models/                      # Trained model artifacts
-│   ├── xgboost_model.joblib     # Serialized model for backend
-│   ├── feature_importance.csv   # Ranked features with source labels
-│   └── metrics.csv              # Evaluation metrics
+│   ├── model_v4.json            # XGBoost v4 — production model (AUC 0.999)
+│   ├── feature_list_v4.json     # 77 feature names for v4
+│   ├── model_meta_v4.json       # v4 metrics, feature importance, config
+│   ├── lookups.json             # URI domain & token standard rug rate lookups
+│   ├── model.json               # v1 model (archived)
+│   ├── model_v3.json            # v3 model (archived — deployer-dependent)
+│   └── feature_list_v3.json     # v3 feature names (archived)
 │
 ├── notebooks/
 │   └── eda.ipynb                # Full EDA notebook
@@ -950,8 +982,31 @@ DeFiSentinel/
 │   ├── audit_features.py        # 82-feature spec mapper
 │   └── label_audit.py           # Label quality analysis
 │
-├── backend/                     # (pending — FastAPI)
-└── frontend/                    # React 18 + Vite 5 + Tailwind + shadcn/ui
+├── backend/                     # FastAPI backend (DEPLOYED)
+│   ├── main.py                  # FastAPI app — REST + WebSocket + Stripe
+│   ├── ml_scorer.py             # XGBoost v4 scorer — 77 features → risk score
+│   ├── ml_scorer_v4.py          # v4 scorer (backup)
+│   └── requirements.txt         # Python dependencies
+│
+├── frontend/                    # React 18 + Vite 5 + Tailwind + shadcn/ui (DEPLOYED)
+│   └── src/
+│       ├── App.tsx              # Routes: /, /scan, /scan/:mint, /connect, /watchlist
+│       ├── pages/
+│       │   ├── Dashboard.tsx    # Stats + LivePoolMonitor
+│       │   ├── ScanToken.tsx    # Individual token scan with auto-scan
+│       │   ├── Pricing.tsx      # Stripe-powered plans + scan packs
+│       │   ├── Connect.tsx      # Auth + sign-in
+│       │   └── Watchlist.tsx    # Starred tokens
+│       ├── components/
+│       │   ├── LivePoolMonitor.tsx  # Two-table: Live Feed + Risk Scanner
+│       │   ├── ScanResult.tsx       # Full scan result display
+│       │   ├── Header.tsx           # Nav + Solana badge
+│       │   └── StatCard.tsx         # Animated stat cards
+│       └── lib/
+│           └── api.ts           # API client (scan, tokens, filter)
+│
+└── live_data/                   # Live data collector pipeline
+    └── collector/               # Feature collection from 5 APIs
 ```
 
 ## Appendix B: Feature Analysis Results
