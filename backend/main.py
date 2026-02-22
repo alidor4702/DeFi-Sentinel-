@@ -387,6 +387,7 @@ def _map_token_list_item(result: CollectionResult) -> dict:
     else:
         risk_label = "SAFE"
 
+    import time as _time
     return {
         "id": result.mint,
         "name": f.get("token_name") or "Unknown",
@@ -401,6 +402,7 @@ def _map_token_list_item(result: CollectionResult) -> dict:
         "price": _first(f.get("jup_price_usd"), f.get("gt_base_token_price_usd")),
         "volume24h": _first(f.get("gt_volume_24h"), f.get("jup_daily_volume")),
         "poolAgeHours": f.get("gt_pool_age_hours"),
+        "scannedAt": int(_time.time() * 1000),
     }
 
 
@@ -409,14 +411,7 @@ def _map_token_list_item(result: CollectionResult) -> dict:
 # ---------------------------------------------------------------------------
 
 # Well-known tokens to seed the dashboard with variety (mix of risk levels)
-_SEED_TOKENS = [
-    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
-    "So11111111111111111111111111111111111111112",      # Wrapped SOL
-    "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",  # BONK
-    "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",   # JUP
-    "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",  # WIF
-    "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",  # POPCAT
-]
+# No hardcoded seed tokens — we only fetch real live trending + new pools
 
 
 async def _extract_mints_from_pools(data: dict, seen: set[str]) -> list[str]:
@@ -485,13 +480,7 @@ async def _refresh_token_cache():
     all_mints: list[str] = []
     seen: set[str] = set()
 
-    # 1) Seed tokens (known established tokens for baseline variety)
-    for mint in _SEED_TOKENS:
-        if mint not in seen:
-            seen.add(mint)
-            all_mints.append(mint)
-
-    # 2) Trending pools (established, higher-liq tokens — mixed risk)
+    # 1) Trending pools (established, higher-liq tokens — mixed risk)
     #    Small delay to avoid GeckoTerminal rate limits on startup
     await asyncio.sleep(2)
     try:
@@ -518,7 +507,7 @@ async def _refresh_token_cache():
         logger.warning("No mints discovered from any source")
         return
 
-    logger.info(f"Scanning {len(all_mints)} tokens ({len(_SEED_TOKENS)} seed + trending + new)")
+    logger.info(f"Scanning {len(all_mints)} tokens (trending + new pools)")
 
     sem = asyncio.Semaphore(_SCAN_CONCURRENCY)
     results: list[dict] = []
@@ -728,10 +717,49 @@ async def list_tokens():
 
 @app.post("/api/tokens/refresh")
 async def refresh_tokens():
-    """Trigger an immediate rescan of new pool tokens."""
-    await _refresh_token_cache()
+    """Trigger an immediate rescan in the background, return current cache."""
+    asyncio.create_task(_refresh_token_cache())
     async with _cache_lock:
         return _token_cache
+
+
+@app.get("/api/tokens/filter")
+async def filter_tokens(
+    max_risk: int = 100,
+    min_liq: float = 0,
+    sort: str = "risk",
+    limit: int = 10,
+):
+    """Return tokens from the cache matching criteria.
+
+    If fewer than 5 tokens match, kick off a background refresh so the
+    next poll picks up more tokens — but still return what we have now
+    so the UI is responsive.
+    """
+    async with _cache_lock:
+        pool = list(_token_cache)
+
+    # Filter
+    matches = [
+        t for t in pool
+        if t.get("riskScore", 0) <= max_risk
+        and t.get("liquidity", 0) >= min_liq
+    ]
+
+    # Sort
+    if sort == "liquidity":
+        matches.sort(key=lambda t: t.get("liquidity", 0), reverse=True)
+    else:
+        # newest first (lowest pool age)
+        matches.sort(key=lambda t: t.get("poolAgeHours") or 999_999)
+
+    result = matches[:limit]
+
+    # If we found fewer than 5, trigger a background refresh to get more
+    if len(result) < 5:
+        asyncio.create_task(_refresh_token_cache())
+
+    return {"tokens": result, "total_matched": len(matches), "scanning": len(result) < 5}
 
 
 @app.websocket("/ws")

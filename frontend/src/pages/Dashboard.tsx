@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { BarChart3, ShieldAlert, Brain, Clock } from "lucide-react";
+import { BarChart3, ShieldAlert, Shield, Database } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import LivePoolMonitor from "@/components/LivePoolMonitor";
 import { fetchTokens, TokenListItem } from "@/lib/api";
@@ -33,11 +33,11 @@ const Dashboard = () => {
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard title="Pools Monitored" value={poolCount} icon={BarChart3} variant="indigo" />
         <StatCard title="Rugs Detected" value={rugCount} suffix={`(${rugPct}%)`} icon={ShieldAlert} variant="danger" />
-        <StatCard title="ML Model AUC" value={99.95} icon={Brain} variant="safe" format="percent" />
-        <StatCard title="Features per Scan" value={81} icon={Clock} variant="warning" />
+        <StatCard title="Safe Tokens" value={safeCount} icon={Shield} variant="safe" />
+        <StatCard title="Data Sources" value={5} icon={Database} variant="warning" />
       </div>
 
-      {/* Main content — full width now */}
+      {/* Two-table monitor — full width grid handled inside component */}
       <LivePoolMonitor />
     </div>
   );

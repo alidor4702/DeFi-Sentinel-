@@ -27,6 +27,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/scan" element={<ScanToken />} />
+                <Route path="/scan/:mint" element={<ScanToken />} />
                 <Route path="/connect" element={<Connect />} />
                 <Route path="/watchlist" element={<Watchlist />} />
                 <Route path="*" element={<NotFound />} />

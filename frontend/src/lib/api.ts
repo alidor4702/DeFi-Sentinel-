@@ -44,6 +44,7 @@ export interface TokenListItem {
   price: number | null;
   volume24h: number | null;
   poolAgeHours: number | null;
+  scannedAt: number | null;
 }
 
 export async function scanToken(mint: string): Promise<ScanResultData> {
@@ -68,5 +69,24 @@ export async function refreshTokens(): Promise<TokenListItem[]> {
   if (!res.ok) {
     throw new Error(`Failed to refresh tokens (${res.status})`);
   }
+  return res.json();
+}
+
+export interface FilteredResponse {
+  tokens: TokenListItem[];
+  total_matched: number;
+  scanning: boolean;
+}
+
+export async function fetchFilteredTokens(
+  opts: { maxRisk?: number; minLiq?: number; sort?: "risk" | "liquidity"; limit?: number } = {},
+): Promise<FilteredResponse> {
+  const params = new URLSearchParams();
+  if (opts.maxRisk !== undefined) params.set("max_risk", String(opts.maxRisk));
+  if (opts.minLiq !== undefined) params.set("min_liq", String(opts.minLiq));
+  if (opts.sort) params.set("sort", opts.sort);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const res = await fetch(`/api/tokens/filter?${params}`);
+  if (!res.ok) throw new Error(`Filter failed (${res.status})`);
   return res.json();
 }

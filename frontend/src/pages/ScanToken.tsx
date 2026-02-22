@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
 import { Search, Shield } from "lucide-react";
 import ScanResult from "@/components/ScanResult";
 import { scanToken, ScanResultData } from "@/lib/api";
@@ -6,14 +7,16 @@ import { scanToken, ScanResultData } from "@/lib/api";
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 const ScanToken = () => {
-  const [address, setAddress] = useState("");
+  const { mint: urlMint } = useParams<{ mint?: string }>();
+  const [address, setAddress] = useState(urlMint || "");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ScanResultData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleScan = async () => {
-    const mint = address.trim();
+  const handleScan = async (mintOverride?: string) => {
+    const mint = (mintOverride || address).trim();
     if (!mint) return;
+    setAddress(mint);
     setLoading(true);
     setResult(null);
     setError(null);
@@ -26,6 +29,13 @@ const ScanToken = () => {
       setLoading(false);
     }
   };
+
+  // Auto-scan when navigating from dashboard token click
+  useEffect(() => {
+    if (urlMint && urlMint.length >= 32) {
+      handleScan(urlMint);
+    }
+  }, [urlMint]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="container max-w-3xl py-12">
