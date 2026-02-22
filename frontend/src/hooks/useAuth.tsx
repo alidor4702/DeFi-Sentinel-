@@ -1,5 +1,6 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useWallet } from "@solana/wallet-adapter-react";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
@@ -9,6 +10,10 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  /** Connected Solana wallet public key (base58) */
+  walletAddress: string | null;
+  /** Whether the user is authenticated via any method */
+  isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,6 +22,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const { publicKey } = useWallet();
+
+  const walletAddress = publicKey?.toBase58() ?? null;
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -52,8 +60,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await supabase.auth.signOut();
   };
 
+  const isAuthenticated = !!(user || walletAddress);
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut, walletAddress, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   );

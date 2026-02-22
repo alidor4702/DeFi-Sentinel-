@@ -9,34 +9,39 @@ import Dashboard from "@/pages/Dashboard";
 import ScanToken from "@/pages/ScanToken";
 import Connect from "@/pages/Connect";
 import Watchlist from "@/pages/Watchlist";
+import Attestations from "@/pages/Attestations";
 import NotFound from "./pages/NotFound";
 import { WatchlistProvider } from "@/context/WatchlistContext";
+import SolanaWalletProvider from "@/components/SolanaWalletProvider";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <WatchlistProvider>
-            <div className="dark min-h-screen bg-background text-foreground">
-              <Header />
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/scan" element={<ScanToken />} />
-                <Route path="/scan/:mint" element={<ScanToken />} />
-                <Route path="/connect" element={<Connect />} />
-                <Route path="/watchlist" element={<Watchlist />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </div>
-          </WatchlistProvider>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
+    <SolanaWalletProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthProvider>
+            <WatchlistProvider>
+              <div className="dark min-h-screen bg-background text-foreground">
+                <Header />
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/scan" element={<ScanToken />} />
+                  <Route path="/scan/:mint" element={<ScanToken />} />
+                  <Route path="/connect" element={<Connect />} />
+                  <Route path="/watchlist" element={<Watchlist />} />
+                  <Route path="/attestations" element={<Attestations />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </div>
+            </WatchlistProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </SolanaWalletProvider>
   </QueryClientProvider>
 );
 

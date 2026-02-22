@@ -1,11 +1,14 @@
-import { Shield, Activity, Star } from "lucide-react";
+import { Shield, Activity, Star, Wallet, FileCheck2 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useWatchlist } from "@/context/WatchlistContext";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
 const navItems = [
   { label: "Dashboard", path: "/" },
   { label: "Scan Token", path: "/scan" },
   { label: "Watchlist", path: "/watchlist" },
+  { label: "Attestations", path: "/attestations" },
   { label: "Connect", path: "/connect" },
 ];
 
@@ -13,6 +16,8 @@ const Header = () => {
   const location = useLocation();
   const { watchlistTokens } = useWatchlist();
   const watchlistCount = watchlistTokens.length;
+  const { publicKey } = useWallet();
+  const walletAddress = publicKey?.toBase58();
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -63,8 +68,27 @@ const Header = () => {
           ))}
         </nav>
 
-        {/* Solana Badge */}
+        {/* Right side: wallet + Solana badge */}
         <div className="flex items-center gap-2">
+          {walletAddress ? (
+            <div className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5">
+              <Wallet className="h-3.5 w-3.5 text-primary" />
+              <span className="font-mono text-xs font-semibold text-primary">
+                {walletAddress.slice(0, 4)}…{walletAddress.slice(-4)}
+              </span>
+            </div>
+          ) : (
+            <WalletMultiButton
+              style={{
+                height: "32px",
+                borderRadius: "9999px",
+                fontSize: "12px",
+                fontWeight: 600,
+                padding: "0 12px",
+                background: "linear-gradient(135deg, #9945FF, #14F195)",
+              }}
+            />
+          )}
           <div className="flex items-center gap-1.5 rounded-full border border-border bg-secondary px-3 py-1.5">
             <Activity className="h-3.5 w-3.5 text-primary" />
             <span className="text-xs font-semibold text-foreground">◎ Solana</span>

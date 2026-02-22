@@ -46,3 +46,6 @@ docker-compose.override.yml
 # Database
 *.db
 *.sqlite3
+
+# Solana keypair (private key - NEVER commit)
+attestation_keypair.json

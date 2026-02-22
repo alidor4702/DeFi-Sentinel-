@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { Shield, Lock, Mail, Eye, EyeOff, ArrowRight, Zap, Activity } from "lucide-react";
+import { Shield, Lock, Mail, Eye, EyeOff, ArrowRight, Zap, Activity, Wallet } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import Pricing from "@/pages/Pricing";
 
 const Connect = () => {
-  const { user, loading, signIn, signUp, signOut } = useAuth();
+  const { user, loading, signIn, signUp, signOut, walletAddress } = useAuth();
+  const { disconnect } = useWallet();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,18 +24,36 @@ const Connect = () => {
     );
   }
 
-  if (user) {
+  if (user || walletAddress) {
     return (
       <div>
         <div className="container flex items-center justify-end py-3">
           <div className="flex items-center gap-3 text-sm">
-            <span className="text-muted-foreground">{user.email}</span>
-            <button
-              onClick={signOut}
-              className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-secondary/80"
-            >
-              Sign out
-            </button>
+            {walletAddress && (
+              <div className="flex items-center gap-2">
+                <Wallet className="h-3.5 w-3.5 text-primary" />
+                <span className="font-mono text-xs text-muted-foreground">
+                  {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
+                </span>
+                <button
+                  onClick={() => disconnect()}
+                  className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-secondary/80"
+                >
+                  Disconnect
+                </button>
+              </div>
+            )}
+            {user && (
+              <>
+                <span className="text-muted-foreground">{user.email}</span>
+                <button
+                  onClick={signOut}
+                  className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-secondary/80"
+                >
+                  Sign out
+                </button>
+              </>
+            )}
           </div>
         </div>
         <Pricing />
@@ -128,7 +149,36 @@ const Connect = () => {
             {isLogin ? "Sign in to access your dashboard" : "Start scanning tokens for free"}
           </p>
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+          {/* ── Solana Wallet Connect ───────────────── */}
+          <div className="mt-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Wallet className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-foreground">Connect with Solana Wallet</span>
+            </div>
+            <WalletMultiButton
+              style={{
+                width: "100%",
+                height: "44px",
+                borderRadius: "0.5rem",
+                fontSize: "14px",
+                fontWeight: 600,
+                justifyContent: "center",
+                background: "linear-gradient(135deg, #9945FF, #14F195)",
+              }}
+            />
+            <p className="mt-2 text-center text-[10px] text-muted-foreground">
+              Supports Phantom, Solflare &amp; more
+            </p>
+          </div>
+
+          {/* ── Divider ───────────────── */}
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">or use email</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Email</label>
               <div className="relative">

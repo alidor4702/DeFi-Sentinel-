@@ -1,5 +1,7 @@
-import { Shield, AlertTriangle, Loader2, Database, Brain, Users, Droplets, Clock, Lock, Snowflake, PieChart, TrendingUp, ExternalLink, DollarSign, BarChart3, Star } from "lucide-react";
+import { useState } from "react";
+import { Shield, AlertTriangle, Loader2, Database, Brain, Users, Droplets, Clock, Lock, Snowflake, PieChart, TrendingUp, ExternalLink, DollarSign, BarChart3, Star, FileCheck2, CheckCircle2, Link2 } from "lucide-react";
 import { ScanResultData } from "@/lib/api";
+import { createAttestation, AttestationRecord } from "@/lib/solana";
 import { useWatchlist } from "@/context/WatchlistContext";
 
 interface ScanResultProps {
@@ -25,6 +27,9 @@ function formatUsd(v: number | null | undefined): string {
 
 const ScanResult = ({ data, loading }: ScanResultProps) => {
   const { addToWatchlist, removeFromWatchlist, isInWatchlist } = useWatchlist();
+  const [attesting, setAttesting] = useState(false);
+  const [attestation, setAttestation] = useState<AttestationRecord | null>(null);
+  const [attestError, setAttestError] = useState("");
 
   if (loading) {
     return (
@@ -206,6 +211,110 @@ const ScanResult = ({ data, loading }: ScanResultProps) => {
           {data.featuresCollected} features collected in {(data.totalLatencyMs / 1000).toFixed(1)}s
           {data.errors.length > 0 && ` · ${data.errors.length} error${data.errors.length > 1 ? "s" : ""}`}
         </span>
+      </div>
+
+      {/* ── On-chain Attestation Section ───────────────── */}
+      <div className="mt-6 rounded-lg border border-primary/20 bg-card p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <FileCheck2 className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold text-foreground">On-chain Risk Attestation</h3>
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+            Solana
+          </span>
+        </div>
+
+        {attestation ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-safe">
+              <CheckCircle2 className="h-4 w-4" />
+              <span className="text-sm font-semibold">Attestation recorded on Solana {attestation.network}</span>
+            </div>
+            <div className="rounded-lg bg-secondary/50 p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Transaction</span>
+                <span className="font-mono text-xs text-foreground">
+                  {attestation.txSignature.slice(0, 12)}...{attestation.txSignature.slice(-8)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Hash</span>
+                <span className="font-mono text-xs text-foreground">
+                  {attestation.featuresHash.slice(0, 16)}...
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Time</span>
+                <span className="text-xs text-foreground">
+                  {new Date(attestation.attestedAt).toLocaleString()}
+                </span>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <a
+                href={attestation.explorerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+              >
+                <Link2 className="h-3 w-3" />
+                Solana Explorer
+              </a>
+              <a
+                href={attestation.solscanUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary/80"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Solscan
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Record this risk assessment permanently on the Solana blockchain. Creates an immutable,
+              verifiable attestation using the Memo program.
+            </p>
+            {attestError && (
+              <p className="mb-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{attestError}</p>
+            )}
+            <button
+              onClick={async () => {
+                setAttesting(true);
+                setAttestError("");
+                try {
+                  const res = await createAttestation(
+                    data.mint,
+                    data.riskScore,
+                    data.verdict,
+                    data.featuresCollected,
+                  );
+                  setAttestation(res.attestation);
+                } catch (e: any) {
+                  setAttestError(e.message || "Attestation failed");
+                } finally {
+                  setAttesting(false);
+                }
+              }}
+              disabled={attesting}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
+              style={{ background: "linear-gradient(135deg, #9945FF, #14F195)" }}
+            >
+              {attesting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Writing to Solana...
+                </>
+              ) : (
+                <>
+                  <FileCheck2 className="h-4 w-4" />
+                  Attest on Solana
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
