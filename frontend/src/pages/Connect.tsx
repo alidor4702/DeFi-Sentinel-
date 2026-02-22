@@ -7,12 +7,24 @@ import Pricing from "@/pages/Pricing";
 
 const Connect = () => {
   const { user, loading, signIn, signUp, signOut, walletAddress } = useAuth();
-  const { disconnect, select } = useWallet();
+  const { disconnect, wallet, select } = useWallet();
 
   const handleDisconnect = async () => {
-    await disconnect();
-    // Deselect the wallet adapter so autoConnect won't silently reconnect.
-    // This clears the cached "walletName" in localStorage.
+    try {
+      // 1. Tell the adapter to disconnect from the wallet extension.
+      if (wallet?.adapter) {
+        await wallet.adapter.disconnect();
+      } else {
+        await disconnect();
+      }
+    } catch {
+      // Swallow – some adapters throw after disconnect.
+    }
+
+    // 2. Nuke the cached wallet name so autoConnect can't silently reconnect.
+    localStorage.removeItem("walletName");
+
+    // 3. Tell the provider there is no selected wallet anymore.
     select(null as any);
   };
   const [isLogin, setIsLogin] = useState(true);
@@ -25,7 +37,7 @@ const Connect = () => {
 
   if (loading) {
     return (
-      <div className="flex min-h-[80vh] items-center justify-center">
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
@@ -87,7 +99,7 @@ const Connect = () => {
 
   if (checkEmail) {
     return (
-      <div className="flex min-h-[80vh] items-center justify-center px-4">
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
         <div className="max-w-md text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/20">
             <Mail className="h-8 w-8 text-primary" />
@@ -109,7 +121,7 @@ const Connect = () => {
   }
 
   return (
-    <div className="flex min-h-[80vh]">
+    <div className="flex min-h-[calc(100vh-4rem)]">
       {/* Left branding panel */}
       <div className="hidden flex-1 flex-col justify-center bg-gradient-to-br from-primary/10 via-card to-card p-12 lg:flex">
         <div className="space-y-10">
