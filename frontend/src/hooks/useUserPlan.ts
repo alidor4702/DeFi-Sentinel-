@@ -21,13 +21,12 @@ export function useUserPlan(): UserPlan {
     scansPerDay: Infinity,
     features: [
       "Unlimited scans",
-      "Full 46-feature breakdown",
-      "Real-time alerts",
-      "API access",
-      "Historical analysis",
-      "AI explanation",
-      "On-chain attestations",
+      "Full 77-feature ML breakdown",
+      "Real-time live token feed",
+      "On-chain risk attestations",
       "Wallet risk profile",
+      "AI-powered risk explanation",
+      "Multi-source scoring (6 APIs)",
     ],
   };
 }

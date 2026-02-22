@@ -14,14 +14,14 @@ const tiers = [
     description: "Start scanning tokens today",
     badge: null,
     variant: "default" as const,
-    plan: null,
-    features: ["3 scans/day", "Basic risk score", "Delayed live feed", "Community support"],
-    excluded: ["Full 46-feature breakdown", "Real-time alerts", "API access", "AI explanation"],
-    cta: "Current Plan",
+    plan: "free",
+    features: ["3 scans/day", "Basic risk score", "Live token feed", "Community support"],
+    excluded: ["Full 77-feature breakdown", "On-chain attestations", "Wallet risk profile", "AI explanation"],
+    cta: "Downgrade",
   },
   {
     name: "Pro",
-    price: 29,
+    price: 9.99,
     period: "/month",
     description: "For active traders & researchers",
     badge: "MOST POPULAR",
@@ -29,19 +29,19 @@ const tiers = [
     plan: "pro",
     features: [
       "Unlimited scans",
-      "Full 46-feature breakdown",
-      "Real-time Telegram/Discord alerts",
-      "API access (1,000 req/day)",
-      "Historical analysis",
-      "AI explanation",
-      "Priority support",
+      "Full 77-feature ML breakdown",
+      "Real-time live token feed",
+      "On-chain risk attestations",
+      "Wallet risk profile",
+      "AI-powered risk explanation",
+      "Multi-source scoring (6 APIs)",
     ],
     excluded: [],
     cta: "Subscribe with Stripe",
   },
   {
     name: "Enterprise",
-    price: 499,
+    price: 99.99,
     period: "/month",
     description: "For wallets, DEXs & platforms",
     badge: "FOR WALLETS & DEXS",
@@ -49,12 +49,12 @@ const tiers = [
     plan: "enterprise",
     features: [
       "Everything in Pro",
-      "Unlimited API",
-      "White-label widget",
-      "Stripe Agent Toolkit integration",
-      "Webhook alerts",
-      "Custom ML training",
-      "SLA guarantee",
+      "Unlimited API access",
+      "WebSocket real-time feed",
+      "Wallet portfolio scanning",
+      "Stripe + SOL payments",
+      "Co-signed wallet attestations",
+      "Priority support & SLA",
     ],
     excluded: [],
     cta: "Subscribe with Stripe",
@@ -202,12 +202,14 @@ const Pricing = () => {
             </div>
 
             <button
-              onClick={() => tier.plan && !isCurrentPlan && handleCheckout(tier.plan)}
-              disabled={!tier.plan || loadingPlan === tier.plan || isCurrentPlan}
+              onClick={() => tier.plan && tier.plan !== "free" && !isCurrentPlan && handleCheckout(tier.plan)}
+              disabled={tier.plan === "free" || loadingPlan === tier.plan || isCurrentPlan}
               className={`mt-6 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all disabled:opacity-60 ${
                 isCurrentPlan
                   ? "bg-safe/15 text-safe border border-safe/30 cursor-default"
-                  : ctaStyles[tier.variant]
+                  : tier.plan === "free"
+                    ? "bg-secondary/50 text-muted-foreground cursor-not-allowed"
+                    : ctaStyles[tier.variant]
               }`}
             >
               {isCurrentPlan ? (
@@ -219,7 +221,7 @@ const Pricing = () => {
               )}
             </button>
 
-            {tier.plan && !isCurrentPlan && (
+            {tier.plan && tier.plan !== "free" && !isCurrentPlan && (
               <p className="mt-2 text-center text-[10px] text-muted-foreground">7-day free trial included</p>
             )}
             {isCurrentPlan && (

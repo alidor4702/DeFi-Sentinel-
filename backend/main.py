@@ -13,7 +13,6 @@ Run:
 import asyncio
 import logging
 import sys
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -103,8 +102,8 @@ except ImportError:
     _stripe = None  # type: ignore
 
 _PLAN_PRICES = {
-    "pro":      {"price_id": "price_1T3Gk57ouElHwHTvifJttL5b", "mode": "subscription"},
-    "enterprise": {"price_id": "price_1T3GkK7ouElHwHTvVgt3vOnR", "mode": "subscription"},
+    "pro":      {"price_id": "price_1T3TEs7ouElHwHTvNILDiuu1", "mode": "subscription"},
+    "enterprise": {"price_id": "price_1T3TEE7ouElHwHTvdILrxAQr", "mode": "subscription"},
     "pack-10":  {"price_id": "price_1T3GkW7ouElHwHTvz6GPpJ1A", "mode": "payment"},
     "pack-50":  {"price_id": "price_1T3GlA7ouElHwHTvTKrYtRHd", "mode": "payment"},
     "pack-200": {"price_id": "price_1T3Glh7ouElHwHTvSVmOv4By", "mode": "payment"},
