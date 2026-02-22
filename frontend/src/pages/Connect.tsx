@@ -1,17 +1,25 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Shield, Lock, Mail, Eye, EyeOff, ArrowRight, Zap, Activity, Wallet } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import Pricing from "@/pages/Pricing";
+import { MANUAL_DISCONNECT_KEY } from "@/components/SolanaWalletProvider";
 
 const Connect = () => {
   const { user, loading, signIn, signUp, signOut, walletAddress } = useAuth();
-  const { disconnect, wallet, select } = useWallet();
+  const { disconnect, wallet, select, publicKey } = useWallet();
+
+  // When the user reconnects after a manual disconnect, clear the flag
+  // so that autoConnect works normally on future page loads.
+  useEffect(() => {
+    if (publicKey) {
+      localStorage.removeItem(MANUAL_DISCONNECT_KEY);
+    }
+  }, [publicKey]);
 
   const handleDisconnect = async () => {
     try {
-      // 1. Tell the adapter to disconnect from the wallet extension.
       if (wallet?.adapter) {
         await wallet.adapter.disconnect();
       } else {
@@ -21,11 +29,15 @@ const Connect = () => {
       // Swallow – some adapters throw after disconnect.
     }
 
-    // 2. Nuke the cached wallet name so autoConnect can't silently reconnect.
+    // Prevent autoConnect from silently reconnecting.
+    localStorage.setItem(MANUAL_DISCONNECT_KEY, "1");
     localStorage.removeItem("walletName");
 
-    // 3. Tell the provider there is no selected wallet anymore.
-    select(null as any);
+    // Nuclear: force a full page reload to destroy all in-memory
+    // wallet-adapter state. Without this the provider can still hold
+    // a reference to the old adapter and reconnect before React
+    // re-renders.
+    window.location.reload();
   };
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
