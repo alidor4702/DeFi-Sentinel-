@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { Search, Shield } from "lucide-react";
+import { Search, Shield, Crown } from "lucide-react";
 import ScanResult from "@/components/ScanResult";
 import { scanToken, ScanResultData } from "@/lib/api";
+import { useUserPlan } from "@/hooks/useUserPlan";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
@@ -10,6 +11,7 @@ const ScanToken = () => {
   const { mint: urlMint } = useParams<{ mint?: string }>();
   const [address, setAddress] = useState(urlMint || "");
   const [loading, setLoading] = useState(false);
+  const { isPro } = useUserPlan();
   const [result, setResult] = useState<ScanResultData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,8 +42,16 @@ const ScanToken = () => {
   return (
     <div className="container max-w-3xl py-12">
       <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-foreground">Scan a Token</h1>
-        <p className="mt-2 text-muted-foreground">Paste a Solana mint address to get an instant AI risk analysis</p>
+        <div className="mb-2 flex items-center justify-center gap-2">
+          <h1 className="text-3xl font-bold text-foreground">Scan a Token</h1>
+          {isPro && (
+            <span className="flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1">
+              <Crown className="h-3 w-3 text-primary" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Pro</span>
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-muted-foreground">Paste a Solana mint address to get an instant AI risk analysis</p>
       </div>
 
       {/* Search */}

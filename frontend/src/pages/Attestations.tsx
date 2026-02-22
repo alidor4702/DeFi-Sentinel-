@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
-import { FileCheck2, ExternalLink, Link2, RefreshCw, Shield, AlertTriangle, Loader2, Search, Wallet } from "lucide-react";
+import { FileCheck2, ExternalLink, Link2, RefreshCw, Shield, AlertTriangle, Loader2, Search, Wallet, Crown } from "lucide-react";
 import { fetchAttestations, AttestationRecord } from "@/lib/solana";
 import { Link } from "react-router-dom";
+import { useUserPlan } from "@/hooks/useUserPlan";
 
 const Attestations = () => {
   const [records, setRecords] = useState<AttestationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("");
+  const { isPro } = useUserPlan();
 
   const load = async () => {
     setLoading(true);
@@ -43,7 +45,15 @@ const Attestations = () => {
               <FileCheck2 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">On-chain Attestations</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-foreground">On-chain Attestations</h1>
+                {isPro && (
+                  <span className="flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1">
+                    <Crown className="h-3 w-3 text-primary" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Pro</span>
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground">
                 Immutable risk assessments recorded on Solana
               </p>

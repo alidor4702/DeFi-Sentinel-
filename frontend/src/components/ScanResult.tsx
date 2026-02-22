@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Shield, AlertTriangle, Loader2, Database, Brain, Users, Droplets, Clock, Lock, Snowflake, PieChart, TrendingUp, ExternalLink, DollarSign, BarChart3, Star, FileCheck2, CheckCircle2, Link2, Wallet } from "lucide-react";
+import { Shield, AlertTriangle, Loader2, Database, Brain, Users, Droplets, Clock, Lock, Snowflake, PieChart, TrendingUp, ExternalLink, DollarSign, BarChart3, Star, FileCheck2, CheckCircle2, Link2, Wallet, Crown } from "lucide-react";
 import { ScanResultData } from "@/lib/api";
 import { createAttestation, AttestationRecord, checkTokenBalance, TokenBalance } from "@/lib/solana";
 import { useWatchlist } from "@/context/WatchlistContext";
@@ -248,6 +248,10 @@ const ScanResult = ({ data, loading }: ScanResultProps) => {
           <h3 className="text-sm font-semibold text-foreground">On-chain Risk Attestation</h3>
           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
             Solana
+          </span>
+          <span className="flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5">
+            <Crown className="h-2.5 w-2.5 text-primary" />
+            <span className="text-[9px] font-bold uppercase tracking-wider text-primary">Pro</span>
           </span>
         </div>
 

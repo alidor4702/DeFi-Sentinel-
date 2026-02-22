@@ -1,8 +1,9 @@
-import { Shield, Activity, Star, Wallet, FileCheck2 } from "lucide-react";
+import { Shield, Activity, Star, Wallet, FileCheck2, Crown } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { useUserPlan } from "@/hooks/useUserPlan";
 
 const navItems = [
   { label: "Dashboard", path: "/" },
@@ -10,6 +11,7 @@ const navItems = [
   { label: "Wallet Risk", path: "/wallet-risk" },
   { label: "Watchlist", path: "/watchlist" },
   { label: "Attestations", path: "/attestations" },
+  { label: "Pricing", path: "/pricing" },
   { label: "Connect", path: "/connect" },
 ];
 
@@ -19,6 +21,7 @@ const Header = () => {
   const watchlistCount = watchlistTokens.length;
   const { publicKey } = useWallet();
   const walletAddress = publicKey?.toBase58();
+  const { planName, isPro } = useUserPlan();
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -69,8 +72,14 @@ const Header = () => {
           ))}
         </nav>
 
-        {/* Right side: wallet + Solana badge */}
+        {/* Right side: plan badge + wallet + Solana badge */}
         <div className="flex items-center gap-2">
+          {isPro && (
+            <div className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1">
+              <Crown className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary">{planName}</span>
+            </div>
+          )}
           {walletAddress ? (
             <div className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5">
               <Wallet className="h-3.5 w-3.5 text-primary" />

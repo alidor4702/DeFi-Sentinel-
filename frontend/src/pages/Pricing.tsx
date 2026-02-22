@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Check, Shield, CreditCard, Lock, X, Loader2, Wallet } from "lucide-react";
+import { Check, Shield, CreditCard, Lock, X, Loader2, Wallet, Crown, CheckCircle2 } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { SystemProgram, Transaction, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { getPayerAddress, verifyPayment, getCredits, PayerInfo } from "@/lib/solana";
+import { useUserPlan } from "@/hooks/useUserPlan";
 
 const tiers = [
   {
@@ -75,6 +76,7 @@ const Pricing = () => {
   const [credits, setCredits] = useState(0);
   const { publicKey, sendTransaction } = useWallet();
   const { connection } = useConnection();
+  const { plan: currentPlan } = useUserPlan();
 
   // Load payer address + prices
   useEffect(() => {
@@ -158,20 +160,38 @@ const Pricing = () => {
   return (
     <div className="container max-w-6xl py-12">
       <div className="mb-10 text-center">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5">
+          <Crown className="h-4 w-4 text-primary" />
+          <span className="text-sm font-bold text-primary">Pro Plan Active</span>
+          <CheckCircle2 className="h-4 w-4 text-safe" />
+        </div>
         <h1 className="text-3xl font-bold text-foreground">Protect Your Portfolio</h1>
-        <p className="mt-2 text-muted-foreground">Choose a plan that fits your trading strategy</p>
+        <p className="mt-2 text-muted-foreground">You're on the <span className="font-semibold text-primary">Pro plan</span> — all premium features unlocked</p>
       </div>
 
       {/* Tiers */}
       <div className="mb-16 grid gap-6 md:grid-cols-3">
-        {tiers.map((tier) => (
+        {tiers.map((tier) => {
+          const isCurrentPlan = tier.plan === currentPlan;
+          return (
           <div
             key={tier.name}
-            className={`rounded-xl border p-6 transition-all duration-300 hover:-translate-y-1 ${tierStyles[tier.variant]}`}
+            className={`rounded-xl border p-6 transition-all duration-300 hover:-translate-y-1 ${isCurrentPlan ? "border-safe/50 bg-card ring-2 ring-safe/20 relative" : tierStyles[tier.variant]}`}
           >
-            {tier.badge && (
+            {isCurrentPlan && (
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-safe px-3 py-1">
+                <CheckCircle2 className="h-3 w-3 text-white" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white">Current Plan</span>
+              </div>
+            )}
+            {tier.badge && !isCurrentPlan && (
               <span className="mb-4 inline-block rounded-full bg-primary/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
                 {tier.badge}
+              </span>
+            )}
+            {tier.badge && isCurrentPlan && (
+              <span className="mb-4 inline-block rounded-full bg-safe/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-safe">
+                SUBSCRIBED
               </span>
             )}
             <h3 className="text-lg font-bold text-foreground">{tier.name}</h3>
@@ -182,19 +202,28 @@ const Pricing = () => {
             </div>
 
             <button
-              onClick={() => tier.plan && handleCheckout(tier.plan)}
-              disabled={!tier.plan || loadingPlan === tier.plan}
-              className={`mt-6 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all disabled:opacity-60 ${ctaStyles[tier.variant]}`}
+              onClick={() => tier.plan && !isCurrentPlan && handleCheckout(tier.plan)}
+              disabled={!tier.plan || loadingPlan === tier.plan || isCurrentPlan}
+              className={`mt-6 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all disabled:opacity-60 ${
+                isCurrentPlan
+                  ? "bg-safe/15 text-safe border border-safe/30 cursor-default"
+                  : ctaStyles[tier.variant]
+              }`}
             >
-              {loadingPlan === tier.plan ? (
+              {isCurrentPlan ? (
+                <><CheckCircle2 className="h-4 w-4" /> Current Plan</>
+              ) : loadingPlan === tier.plan ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 tier.cta
               )}
             </button>
 
-            {tier.plan && (
+            {tier.plan && !isCurrentPlan && (
               <p className="mt-2 text-center text-[10px] text-muted-foreground">7-day free trial included</p>
+            )}
+            {isCurrentPlan && (
+              <p className="mt-2 text-center text-[10px] text-safe">✓ All Pro features unlocked</p>
             )}
 
             <div className="mt-6 space-y-2.5">
@@ -212,7 +241,8 @@ const Pricing = () => {
               ))}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Pay-per-scan */}
