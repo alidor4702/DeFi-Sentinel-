@@ -1372,6 +1372,8 @@ async def wallet_risk_profile(address: str):
                 "scannedTokens": 0,
                 "portfolioRiskScore": 0,
                 "riskBreakdown": {"danger": 0, "moderate": 0, "safe": 0},
+                "totalEstimatedValue": 0,
+                "dangerExposure": 0,
                 "tokens": [],
                 "summary": "No SPL tokens found in this wallet.",
             }

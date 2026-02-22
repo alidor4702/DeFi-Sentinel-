@@ -11,7 +11,6 @@ const navItems = [
   { label: "Wallet Risk", path: "/wallet-risk" },
   { label: "Watchlist", path: "/watchlist" },
   { label: "Attestations", path: "/attestations" },
-  { label: "Pricing", path: "/pricing" },
   { label: "Connect", path: "/connect" },
 ];
 

@@ -243,9 +243,9 @@ const WalletRisk = () => {
               </div>
               <p className="mt-2 text-3xl font-black text-foreground">{profile.totalTokens}</p>
               <p className="text-xs text-muted-foreground">{profile.scannedTokens} scanned</p>
-              {profile.totalEstimatedValue > 0 && (
+              {(profile.totalEstimatedValue ?? 0) > 0 && (
                 <p className="mt-2 text-sm font-semibold text-primary">
-                  ~${profile.totalEstimatedValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  ~${(profile.totalEstimatedValue ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </p>
               )}
             </div>
@@ -283,7 +283,7 @@ const WalletRisk = () => {
                 Danger Exposure
               </div>
               <p className="mt-2 text-3xl font-black text-danger">
-                ${profile.dangerExposure.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                ${(profile.dangerExposure ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </p>
               <p className="text-xs text-muted-foreground">at risk</p>
             </div>
