@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileCheck2, ExternalLink, Link2, RefreshCw, Shield, AlertTriangle, Loader2, Search } from "lucide-react";
+import { FileCheck2, ExternalLink, Link2, RefreshCw, Shield, AlertTriangle, Loader2, Search, Wallet } from "lucide-react";
 import { fetchAttestations, AttestationRecord } from "@/lib/solana";
 import { Link } from "react-router-dom";
 
@@ -165,6 +165,12 @@ const Attestations = () => {
                         {isSimulated && (
                           <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[9px] font-bold text-warning">
                             SIMULATED
+                          </span>
+                        )}
+                        {record.walletAddress && (
+                          <span className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-[9px] font-bold text-primary flex items-center gap-1">
+                            <Wallet className="h-2.5 w-2.5" />
+                            {record.walletAddress.slice(0, 4)}...{record.walletAddress.slice(-4)}
                           </span>
                         )}
                       </div>

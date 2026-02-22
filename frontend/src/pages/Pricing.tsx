@@ -1,5 +1,9 @@
-import { useState } from "react";
-import { Check, Shield, CreditCard, Lock, X, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Check, Shield, CreditCard, Lock, X, Loader2, Wallet } from "lucide-react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useConnection } from "@solana/wallet-adapter-react";
+import { SystemProgram, Transaction, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { getPayerAddress, verifyPayment, getCredits, PayerInfo } from "@/lib/solana";
 
 const tiers = [
   {
@@ -64,6 +68,60 @@ const scanPacks = [
 
 const Pricing = () => {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [solLoading, setSolLoading] = useState<string | null>(null);
+  const [solSuccess, setSolSuccess] = useState<string | null>(null);
+  const [solError, setSolError] = useState("");
+  const [payerInfo, setPayerInfo] = useState<PayerInfo | null>(null);
+  const [credits, setCredits] = useState(0);
+  const { publicKey, sendTransaction } = useWallet();
+  const { connection } = useConnection();
+
+  // Load payer address + prices
+  useEffect(() => {
+    getPayerAddress().then(setPayerInfo).catch(() => {});
+  }, []);
+
+  // Load credits when wallet changes
+  useEffect(() => {
+    if (publicKey) {
+      getCredits(publicKey.toBase58()).then((r) => setCredits(r.credits)).catch(() => {});
+    }
+  }, [publicKey?.toBase58()]);
+
+  const handleSolPayment = async (plan: string) => {
+    if (!publicKey || !payerInfo) return;
+    setSolLoading(plan);
+    setSolError("");
+    setSolSuccess(null);
+    try {
+      const solAmount = payerInfo.solPrices[plan];
+      if (!solAmount) throw new Error("Unknown plan");
+
+      // Create SOL transfer transaction
+      const tx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: new PublicKey(payerInfo.address),
+          lamports: Math.round(solAmount * LAMPORTS_PER_SOL),
+        }),
+      );
+
+      // User signs and sends via wallet
+      const signature = await sendTransaction(tx, connection);
+
+      // Wait for confirmation
+      await connection.confirmTransaction(signature, "confirmed");
+
+      // Verify with backend and credit scans
+      const result = await verifyPayment(signature, plan, publicKey.toBase58());
+      setCredits(result.totalCredits);
+      setSolSuccess(`Payment confirmed! +${result.creditsAdded} scans credited.`);
+    } catch (err: any) {
+      setSolError(err.message || "SOL payment failed");
+    } finally {
+      setSolLoading(null);
+    }
+  };
 
   const tierStyles = {
     default: "border-border bg-card",
@@ -160,6 +218,32 @@ const Pricing = () => {
       {/* Pay-per-scan */}
       <div className="mb-16">
         <h2 className="mb-6 text-center text-xl font-bold text-foreground">Pay-Per-Scan Packs</h2>
+
+        {/* Credits banner */}
+        {publicKey && (
+          <div className="mb-4 flex items-center justify-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+            <Wallet className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold text-foreground">
+              {credits} scan credits
+            </span>
+            <span className="text-xs text-muted-foreground">
+              · {publicKey.toBase58().slice(0, 4)}...{publicKey.toBase58().slice(-4)}
+            </span>
+          </div>
+        )}
+
+        {/* SOL payment status */}
+        {solSuccess && (
+          <div className="mb-4 rounded-lg bg-safe/10 border border-safe/30 px-4 py-3 text-sm text-safe text-center">
+            ✅ {solSuccess}
+          </div>
+        )}
+        {solError && (
+          <div className="mb-4 rounded-lg bg-danger/10 border border-danger/30 px-4 py-3 text-sm text-danger text-center">
+            {solError}
+          </div>
+        )}
+
         <div className="grid gap-4 md:grid-cols-3">
           {scanPacks.map((pack) => (
             <div key={pack.scans} className="rounded-xl border border-border bg-card p-5 text-center transition-all hover:-translate-y-0.5">
@@ -179,19 +263,49 @@ const Pricing = () => {
                 {loadingPlan === pack.plan ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  "Buy Now"
+                  <>
+                    <CreditCard className="h-3.5 w-3.5" />
+                    Pay with Stripe
+                  </>
                 )}
               </button>
+
+              {/* SOL payment option */}
+              {publicKey && payerInfo ? (
+                <button
+                  onClick={() => handleSolPayment(pack.plan)}
+                  disabled={solLoading === pack.plan}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, #9945FF, #14F195)" }}
+                >
+                  {solLoading === pack.plan ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Wallet className="h-3.5 w-3.5" />
+                      Pay {payerInfo.solPrices[pack.plan]} SOL
+                    </>
+                  )}
+                </button>
+              ) : (
+                <p className="mt-2 text-center text-[10px] text-muted-foreground">
+                  Connect wallet for SOL payment
+                </p>
+              )}
             </div>
           ))}
         </div>
       </div>
 
       {/* Trust footer */}
-      <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <CreditCard className="h-3.5 w-3.5" />
           Powered by Stripe
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Wallet className="h-3.5 w-3.5" />
+          SOL Payments
         </div>
         <div className="flex items-center gap-1.5">
           <Lock className="h-3.5 w-3.5" />

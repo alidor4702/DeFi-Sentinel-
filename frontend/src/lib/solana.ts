@@ -12,6 +12,7 @@ export interface AttestationRecord {
   attestedAt: string;          // ISO 8601
   explorerUrl: string;
   solscanUrl: string;
+  walletAddress: string | null;
 }
 
 export interface AttestResponse {
@@ -21,19 +22,27 @@ export interface AttestResponse {
 
 /**
  * Request the backend to create an on-chain risk attestation.
- * The backend sends a Solana transaction with a memo containing
- * the risk score hash, then stores the record.
+ * If walletAddress/walletSignature are provided, the attestation
+ * is cryptographically tied to the user's wallet.
  */
 export async function createAttestation(
   mint: string,
   riskScore: number,
   verdict: string,
   featuresCollected: number,
+  walletAddress?: string | null,
+  walletSignature?: string | null,
+  signedMessage?: string | null,
 ): Promise<AttestResponse> {
   const res = await fetch("/api/attest", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mint, riskScore, verdict, featuresCollected }),
+    body: JSON.stringify({
+      mint, riskScore, verdict, featuresCollected,
+      walletAddress: walletAddress || null,
+      walletSignature: walletSignature || null,
+      signedMessage: signedMessage || null,
+    }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
@@ -77,5 +86,72 @@ export async function verifyWalletSignature(
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(body.detail || "Wallet verification failed");
   }
+  return res.json();
+}
+
+/* ── Payment & Balance APIs ────────────────────────── */
+
+export interface PayerInfo {
+  address: string;
+  network: string;
+  solPrices: Record<string, number>;
+}
+
+/** Get the DeFi Sentinel payer wallet address + SOL prices. */
+export async function getPayerAddress(): Promise<PayerInfo> {
+  const res = await fetch("/api/payer-address");
+  if (!res.ok) throw new Error("Failed to fetch payer address");
+  return res.json();
+}
+
+export interface TokenBalance {
+  balance: number;
+  decimals: number;
+  uiAmount: number;
+  hasToken: boolean;
+}
+
+/** Check if a wallet holds a specific token (mainnet). */
+export async function checkTokenBalance(
+  walletAddress: string,
+  mint: string,
+): Promise<TokenBalance> {
+  const res = await fetch(`/api/wallet/${walletAddress}/balance/${mint}`);
+  if (!res.ok) return { balance: 0, decimals: 0, uiAmount: 0, hasToken: false };
+  return res.json();
+}
+
+export interface VerifyPaymentResult {
+  success: boolean;
+  plan: string;
+  creditsAdded: number;
+  totalCredits: number;
+  txSignature: string;
+}
+
+/** Verify a SOL payment and credit scans. */
+export async function verifyPayment(
+  txSignature: string,
+  plan: string,
+  walletAddress: string,
+): Promise<VerifyPaymentResult> {
+  const res = await fetch("/api/verify-solana-payment", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ txSignature, plan, walletAddress }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(body.detail || "Payment verification failed");
+  }
+  return res.json();
+}
+
+/** Get scan credits for a wallet. */
+export async function getCredits(
+  walletAddress: string,
+): Promise<{ wallet: string; credits: number }> {
+  const res = await fetch(`/api/credits/${walletAddress}`);
+  if (!res.ok) return { wallet: walletAddress, credits: 0 };
   return res.json();
 }

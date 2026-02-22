@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Shield, AlertTriangle, Loader2, Database, Brain, Users, Droplets, Clock, Lock, Snowflake, PieChart, TrendingUp, ExternalLink, DollarSign, BarChart3, Star, FileCheck2, CheckCircle2, Link2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Shield, AlertTriangle, Loader2, Database, Brain, Users, Droplets, Clock, Lock, Snowflake, PieChart, TrendingUp, ExternalLink, DollarSign, BarChart3, Star, FileCheck2, CheckCircle2, Link2, Wallet } from "lucide-react";
 import { ScanResultData } from "@/lib/api";
-import { createAttestation, AttestationRecord } from "@/lib/solana";
+import { createAttestation, AttestationRecord, checkTokenBalance, TokenBalance } from "@/lib/solana";
 import { useWatchlist } from "@/context/WatchlistContext";
+import { useWallet } from "@solana/wallet-adapter-react";
+import bs58 from "bs58";
 
 interface ScanResultProps {
   data: ScanResultData | null;
@@ -27,9 +29,22 @@ function formatUsd(v: number | null | undefined): string {
 
 const ScanResult = ({ data, loading }: ScanResultProps) => {
   const { addToWatchlist, removeFromWatchlist, isInWatchlist } = useWatchlist();
+  const { publicKey, signMessage } = useWallet();
   const [attesting, setAttesting] = useState(false);
   const [attestation, setAttestation] = useState<AttestationRecord | null>(null);
   const [attestError, setAttestError] = useState("");
+  const [tokenBalance, setTokenBalance] = useState<TokenBalance | null>(null);
+
+  // Check if connected wallet holds this token
+  useEffect(() => {
+    if (data && publicKey) {
+      checkTokenBalance(publicKey.toBase58(), data.mint)
+        .then(setTokenBalance)
+        .catch(() => setTokenBalance(null));
+    } else {
+      setTokenBalance(null);
+    }
+  }, [data?.mint, publicKey?.toBase58()]);
 
   if (loading) {
     return (
@@ -94,6 +109,19 @@ const ScanResult = ({ data, loading }: ScanResultProps) => {
           <p className="font-mono text-xs text-muted-foreground">
             {data.mint.slice(0, 12)}...{data.mint.slice(-8)}
           </p>
+          {/* Token balance indicator */}
+          {publicKey && tokenBalance && (
+            <div className={`mt-1 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+              tokenBalance.hasToken
+                ? "bg-primary/10 border border-primary/30 text-primary"
+                : "bg-secondary border border-border text-muted-foreground"
+            }`}>
+              <Wallet className="h-3 w-3" />
+              {tokenBalance.hasToken
+                ? `You hold ${tokenBalance.uiAmount.toLocaleString()} ${data.symbol}`
+                : "Not in your wallet"}
+            </div>
+          )}
         </div>
         <button
           onClick={() => {
@@ -229,6 +257,14 @@ const ScanResult = ({ data, loading }: ScanResultProps) => {
               <CheckCircle2 className="h-4 w-4" />
               <span className="text-sm font-semibold">Attestation recorded on Solana {attestation.network}</span>
             </div>
+            {attestation.walletAddress && (
+              <div className="flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/30 px-2.5 py-1 w-fit">
+                <Wallet className="h-3 w-3 text-primary" />
+                <span className="text-[10px] font-semibold text-primary">
+                  Signed by {attestation.walletAddress.slice(0, 4)}...{attestation.walletAddress.slice(-4)}
+                </span>
+              </div>
+            )}
             <div className="rounded-lg bg-secondary/50 p-3 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Transaction</span>
@@ -284,11 +320,29 @@ const ScanResult = ({ data, loading }: ScanResultProps) => {
                 setAttesting(true);
                 setAttestError("");
                 try {
+                  let walletAddr: string | null = null;
+                  let walletSig: string | null = null;
+                  let signedMsg: string | null = null;
+
+                  // If wallet connected, ask user to sign the attestation
+                  if (publicKey && signMessage) {
+                    const ts = new Date().toISOString();
+                    const msg = `DeFi Sentinel Attestation\nMint: ${data.mint}\nRisk: ${data.riskScore}\nVerdict: ${data.verdict}\nTime: ${ts}`;
+                    const msgBytes = new TextEncoder().encode(msg);
+                    const sig = await signMessage(msgBytes);
+                    walletAddr = publicKey.toBase58();
+                    walletSig = bs58.encode(sig);
+                    signedMsg = msg;
+                  }
+
                   const res = await createAttestation(
                     data.mint,
                     data.riskScore,
                     data.verdict,
                     data.featuresCollected,
+                    walletAddr,
+                    walletSig,
+                    signedMsg,
                   );
                   setAttestation(res.attestation);
                 } catch (e: any) {
@@ -304,12 +358,12 @@ const ScanResult = ({ data, loading }: ScanResultProps) => {
               {attesting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Writing to Solana...
+                  {publicKey ? "Sign & Attest..." : "Writing to Solana..."}
                 </>
               ) : (
                 <>
                   <FileCheck2 className="h-4 w-4" />
-                  Attest on Solana
+                  {publicKey ? "Sign & Attest on Solana" : "Attest on Solana"}
                 </>
               )}
             </button>
