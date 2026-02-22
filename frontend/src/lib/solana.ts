@@ -155,3 +155,44 @@ export async function getCredits(
   if (!res.ok) return { wallet: walletAddress, credits: 0 };
   return res.json();
 }
+
+/* ── Wallet Risk Profile ────────────────────────── */
+
+export interface WalletTokenRisk {
+  mint: string;
+  name: string;
+  symbol: string;
+  balance: number;
+  riskScore: number;
+  verdict: string;
+  mlConfidence: number;
+  liquidity: number;
+  price: number | null;
+  estimatedValue: number;
+  riskFactors: string[];
+  error?: string;
+}
+
+export interface WalletRiskProfile {
+  wallet: string;
+  totalTokens: number;
+  scannedTokens: number;
+  portfolioRiskScore: number;
+  riskBreakdown: { danger: number; moderate: number; safe: number };
+  totalEstimatedValue: number;
+  dangerExposure: number;
+  tokens: WalletTokenRisk[];
+  summary: string;
+}
+
+/** Analyze all tokens in a wallet for rug exposure. */
+export async function getWalletRiskProfile(
+  walletAddress: string,
+): Promise<WalletRiskProfile> {
+  const res = await fetch(`/api/wallet/${walletAddress}/risk-profile`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(body.detail || `Risk profile failed (${res.status})`);
+  }
+  return res.json();
+}

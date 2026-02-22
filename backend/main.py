@@ -1331,3 +1331,173 @@ async def check_token_balance(address: str, mint: str):
     except Exception as e:
         logger.error("Token balance check error: %s", e)
         return {"balance": 0, "decimals": 0, "uiAmount": 0.0, "hasToken": False, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Wallet Risk Profile — scan ALL holdings for rug exposure
+# ---------------------------------------------------------------------------
+
+@app.get("/api/wallet/{address}/risk-profile")
+async def wallet_risk_profile(address: str):
+    """Fetch all SPL tokens held by a wallet and score each for rug risk.
+
+    Returns per-token risk scores + aggregate portfolio risk metrics.
+    Uses mainnet Helius RPC to get holdings, then runs ML scoring on each.
+    """
+    try:
+        from live_data.collector.config import CollectorSettings
+        settings = CollectorSettings()
+        rpc_url = settings.helius_rpc_url
+
+        # 1) Get ALL token accounts for wallet
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getTokenAccountsByOwner",
+            "params": [
+                address,
+                {"programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"},
+                {"encoding": "jsonParsed"},
+            ],
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(rpc_url, json=payload)
+            data = resp.json()
+
+        accounts = data.get("result", {}).get("value", [])
+        if not accounts:
+            return {
+                "wallet": address,
+                "totalTokens": 0,
+                "scannedTokens": 0,
+                "portfolioRiskScore": 0,
+                "riskBreakdown": {"danger": 0, "moderate": 0, "safe": 0},
+                "tokens": [],
+                "summary": "No SPL tokens found in this wallet.",
+            }
+
+        # 2) Extract tokens with non-zero balance
+        holdings: list[dict] = []
+        for acc in accounts:
+            try:
+                info = acc["account"]["data"]["parsed"]["info"]
+                token_amount = info["tokenAmount"]
+                ui_amount = float(token_amount.get("uiAmountString", "0"))
+                if ui_amount > 0:
+                    holdings.append({
+                        "mint": info["mint"],
+                        "balance": ui_amount,
+                        "decimals": token_amount["decimals"],
+                    })
+            except (KeyError, ValueError):
+                continue
+
+        if not holdings:
+            return {
+                "wallet": address,
+                "totalTokens": 0,
+                "scannedTokens": 0,
+                "portfolioRiskScore": 0,
+                "riskBreakdown": {"danger": 0, "moderate": 0, "safe": 0},
+                "tokens": [],
+                "summary": "No tokens with non-zero balance found.",
+            }
+
+        # 3) Score each token (concurrently, max 3 at a time)
+        sem = asyncio.Semaphore(3)
+        scored_tokens: list[dict] = []
+
+        async def _score_one(h: dict):
+            mint = h["mint"]
+            async with sem:
+                try:
+                    result = await collect_features(mint)
+                    rug_prob, risk_score = predict_rug_probability(result.features)
+                    verdict = "SAFE" if risk_score < 40 else ("MODERATE" if risk_score < 70 else "DANGER")
+                    name = result.features.get("token_name") or "Unknown"
+                    symbol = result.features.get("token_symbol") or "???"
+                    liquidity = _first(
+                        result.features.get("gt_reserve_usd"),
+                        result.features.get("rc_total_market_liquidity"),
+                    ) or 0
+                    price = _first(
+                        result.features.get("jup_price_usd"),
+                        result.features.get("gt_base_token_price_usd"),
+                    )
+                    scored_tokens.append({
+                        "mint": mint,
+                        "name": name,
+                        "symbol": symbol,
+                        "balance": h["balance"],
+                        "riskScore": risk_score,
+                        "verdict": verdict,
+                        "mlConfidence": round(rug_prob * 100, 1),
+                        "liquidity": liquidity,
+                        "price": price,
+                        "estimatedValue": round(h["balance"] * (price or 0), 2),
+                        "riskFactors": _build_risk_factors(result.features),
+                    })
+                except Exception as e:
+                    logger.warning("Risk profile: failed to score %s: %s", mint, e)
+                    scored_tokens.append({
+                        "mint": mint,
+                        "name": "Unknown",
+                        "symbol": "???",
+                        "balance": h["balance"],
+                        "riskScore": -1,
+                        "verdict": "UNKNOWN",
+                        "mlConfidence": 0,
+                        "liquidity": 0,
+                        "price": None,
+                        "estimatedValue": 0,
+                        "riskFactors": [],
+                        "error": str(e),
+                    })
+
+        # Cap at 20 tokens to keep response time reasonable
+        scan_list = holdings[:20]
+        await asyncio.gather(*[_score_one(h) for h in scan_list])
+
+        # 4) Sort by risk (highest first) and compute aggregate stats
+        scored_tokens.sort(key=lambda t: t["riskScore"], reverse=True)
+        valid_scores = [t["riskScore"] for t in scored_tokens if t["riskScore"] >= 0]
+        danger = sum(1 for s in valid_scores if s >= 70)
+        moderate = sum(1 for s in valid_scores if 40 <= s < 70)
+        safe = sum(1 for s in valid_scores if s < 40)
+
+        # Weighted average risk (by estimated value if available)
+        total_value = sum(t["estimatedValue"] for t in scored_tokens if t["riskScore"] >= 0)
+        if total_value > 0:
+            portfolio_risk = round(
+                sum(t["riskScore"] * t["estimatedValue"] for t in scored_tokens if t["riskScore"] >= 0)
+                / total_value
+            )
+        elif valid_scores:
+            portfolio_risk = round(sum(valid_scores) / len(valid_scores))
+        else:
+            portfolio_risk = 0
+
+        # Build summary
+        total_est = sum(t["estimatedValue"] for t in scored_tokens)
+        danger_value = sum(t["estimatedValue"] for t in scored_tokens if t["riskScore"] >= 70)
+        if danger > 0:
+            summary = f"⚠️ {danger} high-risk token(s) detected worth ~${danger_value:,.2f}. Consider reviewing or exiting these positions."
+        elif moderate > 0:
+            summary = f"Your wallet has {moderate} moderate-risk token(s). Monitor closely for changes."
+        else:
+            summary = "✅ Your portfolio looks healthy — no high-risk tokens detected."
+
+        return {
+            "wallet": address,
+            "totalTokens": len(holdings),
+            "scannedTokens": len(scan_list),
+            "portfolioRiskScore": portfolio_risk,
+            "riskBreakdown": {"danger": danger, "moderate": moderate, "safe": safe},
+            "totalEstimatedValue": round(total_est, 2),
+            "dangerExposure": round(danger_value, 2),
+            "tokens": scored_tokens,
+            "summary": summary,
+        }
+    except Exception as e:
+        logger.error("Wallet risk profile error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Risk profile analysis failed: {e}")

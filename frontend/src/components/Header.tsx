@@ -7,6 +7,7 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 const navItems = [
   { label: "Dashboard", path: "/" },
   { label: "Scan Token", path: "/scan" },
+  { label: "Wallet Risk", path: "/wallet-risk" },
   { label: "Watchlist", path: "/watchlist" },
   { label: "Attestations", path: "/attestations" },
   { label: "Connect", path: "/connect" },

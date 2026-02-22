@@ -10,6 +10,7 @@ import ScanToken from "@/pages/ScanToken";
 import Connect from "@/pages/Connect";
 import Watchlist from "@/pages/Watchlist";
 import Attestations from "@/pages/Attestations";
+import WalletRisk from "@/pages/WalletRisk";
 import NotFound from "./pages/NotFound";
 import { WatchlistProvider } from "@/context/WatchlistContext";
 import SolanaWalletProvider from "@/components/SolanaWalletProvider";
@@ -34,6 +35,7 @@ const App = () => (
                   <Route path="/connect" element={<Connect />} />
                   <Route path="/watchlist" element={<Watchlist />} />
                   <Route path="/attestations" element={<Attestations />} />
+                  <Route path="/wallet-risk" element={<WalletRisk />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </div>
