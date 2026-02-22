@@ -4,8 +4,6 @@
 
 Monitors new token launches, scores risk using on-chain + market signals from 6 APIs, and alerts traders before they lose money — all powered by an XGBoost ML model trained on 116K+ liquidity pool records with **AUC 0.999**.
 
-> Built for [HackEurope 2026](https://hackeurope.dev) · Solana × Stripe × ML
-
 ---
 
 ## What It Does
@@ -144,7 +142,6 @@ For detailed technical documentation, see:
 | [**docs/data-ml.md**](docs/data-ml.md) | Data pipeline, multi-source enrichment (6 APIs → 113 features), label quality audit, XGBoost v4 model training & results |
 | [**docs/backend.md**](docs/backend.md) | Backend API endpoints, data flow, scoring pipeline, database, environment variables |
 | [**docs/solana-features.md**](docs/solana-features.md) | Solana integration: wallet connect, on-chain attestations, SOL payments, wallet risk profile, real-time token detection |
-| [Architecture.md](Architecture.md) | Full system architecture & build spec |
 
 ---
 
@@ -160,10 +157,6 @@ For detailed technical documentation, see:
 | Training Split | Temporal: pre-2024 train → 2024 test |
 
 ---
-
-## Team
-
-Built by a 2-person team in 48 hours at HackEurope 2026.
 
 ## License
 

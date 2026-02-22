@@ -4,15 +4,79 @@
 
 ---
 
-## Overview
+## System Overview
 
-The backend is a **FastAPI** application (`backend/main.py`) that:
+```mermaid
+graph TB
+    subgraph CLIENTS["🖥️ Clients"]
+        REACT["React Frontend<br/>Dashboard · Scanner · Wallet"]
+        WS_CLIENT["WebSocket Clients<br/>Real-time feed"]
+    end
 
-1. **Collects** live on-chain and market data from 6 APIs
-2. **Scores** tokens using an XGBoost v4 ML model (77 features, AUC 0.999)
-3. **Serves** a REST API + WebSocket feed to the React frontend
-4. **Manages** Stripe subscriptions, SOL payments, scan credits, and on-chain attestations
-5. **Listens** to Solana mainnet via WebSocket for real-time new token detection
+    subgraph BACKEND["⚙️ FastAPI Backend  (port 8000)"]
+        API["REST API<br/>16 endpoints"]
+        WSS["WebSocket Server<br/>/ws"]
+        STRIPE_H["Stripe Handler<br/>Checkout · Webhooks"]
+        SOL_H["Solana Handler<br/>Attestations · Payments"]
+    end
+
+    subgraph DATA["📡 Data Collection Layer"]
+        COLLECTOR["Multi-API Collector<br/>(concurrent)"]
+        HELIUS["Helius DAS"]
+        RUGCHECK["RugCheck"]
+        GOPLUS["GoPlus Security"]
+        GECKO["GeckoTerminal"]
+        JUPITER["Jupiter"]
+    end
+
+    subgraph ML["🧠 ML Scoring Engine"]
+        MAPPER["Feature Mapper<br/>_map_v4() → 77 features"]
+        XGBOOST["XGBoost v4<br/>600 trees · AUC 0.999"]
+        HEURISTIC["Heuristic Adjustments"]
+    end
+
+    subgraph CHAIN["⛓️ Solana Blockchain"]
+        MAINNET["Mainnet RPC<br/>Token data · WebSocket"]
+        DEVNET["Devnet<br/>Attestations · Payments"]
+    end
+
+    subgraph STORAGE["💾 Storage"]
+        SQLITE["SQLite<br/>attestations · payments"]
+        CACHE["In-Memory Cache<br/>~20 live tokens"]
+    end
+
+    REACT --> API
+    REACT --> WSS
+    WS_CLIENT --> WSS
+
+    API --> COLLECTOR
+    API --> ML
+    API --> STRIPE_H
+    API --> SOL_H
+
+    COLLECTOR --> HELIUS
+    COLLECTOR --> RUGCHECK
+    COLLECTOR --> GOPLUS
+    COLLECTOR --> GECKO
+    COLLECTOR --> JUPITER
+
+    COLLECTOR --> MAPPER
+    MAPPER --> XGBOOST
+    XGBOOST --> HEURISTIC
+
+    SOL_H --> DEVNET
+    COLLECTOR --> MAINNET
+
+    API --> SQLITE
+    API --> CACHE
+
+    style BACKEND fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+    style DATA fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style ML fill:#1e293b,stroke:#22c55e,color:#e2e8f0
+    style CHAIN fill:#1e293b,stroke:#9945ff,color:#e2e8f0
+    style STORAGE fill:#1e293b,stroke:#818cf8,color:#e2e8f0
+    style CLIENTS fill:#1e293b,stroke:#818cf8,color:#e2e8f0
+```
 
 **Start command:**
 ```bash
@@ -22,7 +86,7 @@ PYTHONPATH=. python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-## API Endpoints
+## API Endpoints (16 total)
 
 ### Token Scanning
 
@@ -74,77 +138,211 @@ PYTHONPATH=. python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 ## Data Flow: Token Scan
 
-When `/api/scan/{mint}` is called:
+Full pipeline from user request to risk score — the core operation of the system.
 
-```
-1. collect_features(mint)     ← live_data/collector pipeline
-   ├── Helius DAS API         → token metadata, authorities, supply
-   ├── RugCheck API           → risk score, LP lock, holder concentration
-   ├── GoPlus Security API    → holder %, TVL, honeypot detection
-   ├── GeckoTerminal API      → price, volume, pool liquidity
-   ├── Jupiter API            → listing status (strict-list check)
-   └── Derived features       → metadata completeness, authority risk
+```mermaid
+graph TD
+    REQ["GET /api/scan/{mint}"] --> COLLECT["collect_features(mint)<br/>6 APIs concurrently"]
 
-2. predict_rug_probability(features)   ← ml_scorer.py
-   ├── _map_v4()              → maps 6-API features to 77 model columns
-   ├── XGBoost predict        → raw rug probability (0.0 – 1.0)
-   ├── Heuristic adjustment   → boost/penalty for strong live signals
-   └── Established-token cap  → $1M+ / 30d+ tokens capped at risk ≤25
+    COLLECT --> H["Helius DAS<br/>metadata · authorities · supply"]
+    COLLECT --> RC["RugCheck<br/>risk score · LP lock · holders"]
+    COLLECT --> GP["GoPlus Security<br/>holder % · TVL · honeypot"]
+    COLLECT --> GT["GeckoTerminal<br/>price · volume · liquidity"]
+    COLLECT --> JP["Jupiter<br/>strict-list check"]
+    COLLECT --> DER["Derived<br/>metadata completeness<br/>authority risk"]
 
-3. _map_scan_result(result)   → frontend-shaped JSON response
-   ├── Risk score (0–100)
-   ├── Verdict (SAFE / MODERATE / DANGER)
-   ├── ML confidence %
-   ├── Risk factors (human-readable explanations)
-   ├── AI analysis narrative
-   ├── Feature breakdown (all collected features)
-   └── API source statuses
+    H --> MAP["_map_v4()<br/>→ 77-column feature vector"]
+    RC --> MAP
+    GP --> MAP
+    GT --> MAP
+    JP --> MAP
+    DER --> MAP
+
+    MAP --> XGB["XGBoost predict<br/>P(rug) ∈ [0.0, 1.0]"]
+    XGB --> ADJUST["Heuristic Adjustments<br/>• RugCheck < 300 → boost risk<br/>• Jupiter strict-list → reduce<br/>• Volume > $100K → reduce<br/>• Creator < 24h → boost"]
+    ADJUST --> CAP["Established-Token Cap<br/>$1M+ liq & 30d+ → max 25"]
+    CAP --> RESPONSE["JSON Response"]
+
+    subgraph RESPONSE_DETAIL["📋 Response Payload"]
+        RS["Risk Score 0–100"]
+        VD["Verdict: SAFE / MODERATE / DANGER"]
+        ML_CONF["ML Confidence %"]
+        RF["Risk Factors (human-readable)"]
+        AI["AI Analysis Narrative"]
+        FB["Feature Breakdown (all collected)"]
+        SRC["API Source Statuses"]
+    end
+
+    RESPONSE --> RESPONSE_DETAIL
+
+    style REQ fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+    style COLLECT fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style MAP fill:#1e293b,stroke:#818cf8,color:#e2e8f0
+    style XGB fill:#1e293b,stroke:#22c55e,color:#e2e8f0
+    style ADJUST fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style CAP fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style RESPONSE fill:#1e293b,stroke:#22c55e,color:#e2e8f0
+    style RESPONSE_DETAIL fill:#0f172a,stroke:#22c55e,color:#e2e8f0
 ```
 
 ---
 
 ## Data Flow: Live Token Feed
 
-The dashboard token feed uses two data sources:
+The dashboard uses two concurrent data sources to populate the real-time token feed:
 
-### 1. Background Refresh Loop (every 5 minutes)
-- Fetches trending tokens from GeckoTerminal and new Raydium/pump.fun pools
-- Scans up to 25 tokens concurrently (semaphore-limited to 2 at a time)
-- Caches results in memory, sorted: SAFE first, then MODERATE, then DANGER
-- Broadcasts updates to all WebSocket clients
+```mermaid
+graph TD
+    subgraph BG["🔄 Background Refresh (every 5 min)"]
+        GECKO_TREND["GeckoTerminal<br/>Trending tokens"]
+        PUMP_NEW["Raydium / Pump.fun<br/>New pool launches"]
+        GECKO_TREND --> SCAN_BG["Scan up to 25 tokens<br/>(semaphore: 2 concurrent)"]
+        PUMP_NEW --> SCAN_BG
+    end
 
-### 2. Solana WebSocket Listener (real-time)
-- Connects to Helius mainnet WebSocket
-- Subscribes to `logsSubscribe` for the Token Program
-- Detects `InitializeMint` instructions → resolves new token mint addresses
-- Immediately scans new tokens and pushes to the live feed via WebSocket
+    subgraph RT["⚡ Solana WebSocket (real-time)"]
+        HELIUS_WS["Helius Mainnet WS<br/>logsSubscribe"]
+        HELIUS_WS --> DETECT["Detect InitializeMint<br/>instructions"]
+        DETECT --> RESOLVE["Resolve new<br/>token mint address"]
+        RESOLVE --> SCAN_RT["Immediate scan<br/>via ML pipeline"]
+    end
+
+    SCAN_BG --> CACHE["In-Memory Cache<br/>~20 tokens sorted:<br/>SAFE → MODERATE → DANGER"]
+    SCAN_RT --> CACHE
+
+    CACHE --> REST_API["GET /api/tokens<br/>REST response"]
+    CACHE --> WS_PUSH["WS /ws<br/>Push to all clients"]
+
+    style BG fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
+    style RT fill:#0f172a,stroke:#22c55e,color:#e2e8f0
+    style CACHE fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+```
 
 ---
 
-## Scoring Pipeline
+## Scoring Pipeline Detail
 
-The ML scorer (`backend/ml_scorer.py`) implements:
+The ML scorer (`backend/ml_scorer.py`) implements a multi-stage scoring process:
 
-1. **Feature mapping (`_map_v4`)** — Maps collector output to 77 XGBoost input features, using `np.nan` for missing data
-2. **XGBoost prediction** — Native NaN handling routes missing features through learned optimal splits
-3. **Heuristic adjustments:**
-   - RugCheck score < 300 → risk boost
-   - Jupiter strict-list → risk reduction
-   - 24h volume > $100K → risk reduction
-   - Fresh creator wallet (< 24h) → risk boost
-4. **Established-token cap** — Tokens with $1M+ liquidity and 30d+ pool age capped at max risk 25
-5. **Fallback** — If XGBoost model fails to load, uses enhanced heuristic scoring
+```
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │                      SCORING PIPELINE STAGES                        │
+  │                                                                     │
+  │  Stage 1: Feature Mapping (_map_v4)                                │
+  │  ├── Maps collector output → 77 XGBoost input columns              │
+  │  ├── Uses np.nan for missing data (API failures, rate limits)      │
+  │  └── Consistent ordering with models/feature_list_v4.json          │
+  │                                                                     │
+  │  Stage 2: XGBoost Prediction                                       │
+  │  ├── Native NaN handling → routes missing features through          │
+  │  │   learned optimal splits                                        │
+  │  └── Output: P(rug) ∈ [0.0, 1.0]                                  │
+  │                                                                     │
+  │  Stage 3: Heuristic Adjustments                                    │
+  │  ├── RugCheck score < 300      → risk boost                        │
+  │  ├── Jupiter strict-list       → risk reduction                    │
+  │  ├── 24h volume > $100K        → risk reduction                    │
+  │  └── Creator wallet < 24h old  → risk boost                        │
+  │                                                                     │
+  │  Stage 4: Established-Token Cap                                    │
+  │  ├── Liquidity > $1M AND pool age > 30 days                       │
+  │  └── → max risk capped at 25 (blue-chip protection)               │
+  │                                                                     │
+  │  Stage 5: Fallback (if XGBoost unavailable)                        │
+  │  └── Enhanced heuristic scoring using rule-based risk factors      │
+  └─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Database
+## Payment Flows
 
-SQLite (`defi_sentinel.db`) stores:
+### Stripe Checkout
 
-| Table | Purpose |
-|-------|---------|
-| `attestations` | On-chain risk attestation records (tx signature, risk score, wallet, mint) |
-| `payments` | SOL payment records and scan credit balances per wallet |
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Stripe
+
+    User->>Frontend: Click "Subscribe" on Pricing page
+    Frontend->>Backend: POST /api/create-checkout {plan: "pro"}
+    Backend->>Stripe: Create Checkout Session<br/>($9.99/mo or $99.99/mo)
+    Stripe-->>Backend: Session URL
+    Backend-->>Frontend: {url: "https://checkout.stripe.com/..."}
+    Frontend->>Stripe: Redirect to Stripe Checkout
+    User->>Stripe: Enter card (test: 4242...)
+    Stripe-->>Frontend: Redirect to success URL
+```
+
+### SOL Payment
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Phantom
+    participant Frontend
+    participant Backend
+    participant Solana as Solana Devnet
+
+    User->>Frontend: Click "Pay with SOL" (scan pack)
+    Frontend->>Phantom: Request SOL transfer<br/>(0.05–0.60 SOL)
+    Phantom->>User: Approve transaction
+    User->>Phantom: Confirm
+    Phantom->>Solana: Submit SOL transfer
+    Solana-->>Phantom: Transaction signature
+    Phantom-->>Frontend: tx signature
+    Frontend->>Backend: POST /api/verify-solana-payment<br/>{signature, wallet, pack}
+    Backend->>Solana: Verify transaction on-chain
+    Solana-->>Backend: Confirmed ✅
+    Backend->>Backend: Credit scans to wallet
+    Backend-->>Frontend: {credits: 10, tx: "..."}
+```
+
+---
+
+## On-Chain Attestation Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Solana as Solana Devnet
+    participant Memo as Memo Program
+
+    User->>Frontend: Click "Attest on Solana"<br/>(after token scan)
+    Frontend->>Backend: POST /api/attest<br/>{mint, riskScore, verdict, wallet}
+    Backend->>Backend: Build Memo instruction<br/>(JSON: mint, score, verdict, timestamp)
+    Backend->>Solana: Submit transaction with Memo
+    Solana->>Memo: Execute Memo program
+    Memo-->>Solana: Store in transaction log
+    Solana-->>Backend: Transaction signature
+    Backend->>Backend: Save to SQLite (attestations table)
+    Backend-->>Frontend: {signature: "5Kx...", explorer_url: "..."}
+    Frontend->>User: Show Solana Explorer link
+```
+
+---
+
+## Database Schema
+
+SQLite (`defi_sentinel.db`) stores persistent state:
+
+```
+  ┌──────────────────────────────────────┐    ┌──────────────────────────────────┐
+  │          attestations                 │    │           payments               │
+  │──────────────────────────────────────│    │──────────────────────────────────│
+  │  id           INTEGER PK             │    │  id           INTEGER PK         │
+  │  mint         TEXT                    │    │  wallet       TEXT               │
+  │  risk_score   INTEGER                │    │  tx_signature TEXT UNIQUE        │
+  │  verdict      TEXT                    │    │  pack         TEXT               │
+  │  wallet       TEXT                    │    │  credits      INTEGER            │
+  │  tx_signature TEXT UNIQUE             │    │  amount_sol   REAL               │
+  │  timestamp    TEXT                    │    │  timestamp    TEXT               │
+  └──────────────────────────────────────┘    └──────────────────────────────────┘
+```
 
 ---
 
@@ -161,11 +359,20 @@ SQLite (`defi_sentinel.db`) stores:
 ## Dependencies
 
 Key Python packages (`backend/requirements.txt`):
-- `fastapi` + `uvicorn` — async web framework
-- `httpx` — async HTTP client for API calls
-- `xgboost` — ML model inference
-- `numpy` — feature array construction
-- `stripe` — payment processing
-- `solders` + `solana` — Solana transaction building
-- `python-dotenv` — environment variable loading
-- `websockets` — Solana WebSocket listener
+
+```
+  ┌──────────────────┬────────────────────────────────────────┐
+  │  Package          │  Purpose                               │
+  ├──────────────────┼────────────────────────────────────────┤
+  │  fastapi          │  Async web framework                   │
+  │  uvicorn          │  ASGI server                           │
+  │  httpx            │  Async HTTP client for 6 API sources   │
+  │  xgboost          │  ML model inference                    │
+  │  numpy            │  Feature array construction            │
+  │  stripe           │  Payment processing                    │
+  │  solders          │  Solana keypair & transaction building  │
+  │  solana           │  Solana RPC client                     │
+  │  python-dotenv    │  Environment variable loading          │
+  │  websockets       │  Solana mainnet WebSocket listener     │
+  └──────────────────┴────────────────────────────────────────┘
+```
