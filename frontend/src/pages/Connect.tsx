@@ -7,7 +7,14 @@ import Pricing from "@/pages/Pricing";
 
 const Connect = () => {
   const { user, loading, signIn, signUp, signOut, walletAddress } = useAuth();
-  const { disconnect } = useWallet();
+  const { disconnect, select } = useWallet();
+
+  const handleDisconnect = async () => {
+    await disconnect();
+    // Deselect the wallet adapter so autoConnect won't silently reconnect.
+    // This clears the cached "walletName" in localStorage.
+    select(null as any);
+  };
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,7 +43,7 @@ const Connect = () => {
                   {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
                 </span>
                 <button
-                  onClick={() => disconnect()}
+                  onClick={handleDisconnect}
                   className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-secondary/80"
                 >
                   Disconnect
@@ -104,27 +111,28 @@ const Connect = () => {
   return (
     <div className="flex min-h-[80vh]">
       {/* Left branding panel */}
-      <div className="hidden flex-1 flex-col justify-between bg-gradient-to-br from-primary/10 via-card to-card p-12 lg:flex">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20">
-              <Shield className="h-6 w-6 text-primary" />
+      <div className="hidden flex-1 flex-col justify-center bg-gradient-to-br from-primary/10 via-card to-card p-12 lg:flex">
+        <div className="space-y-10">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20">
+                <Shield className="h-6 w-6 text-primary" />
+              </div>
+              <span className="text-xl font-bold text-foreground">DeFi Sentinel</span>
             </div>
-            <span className="text-xl font-bold text-foreground">DeFi Sentinel</span>
+            <p className="mt-1 text-sm text-muted-foreground">AI rug-pull detector</p>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">AI rug-pull detector</p>
-        </div>
 
-        <div className="space-y-8">
           <h2 className="text-3xl font-bold leading-tight text-foreground">
             Protect your portfolio<br />
             <span className="text-gradient">before you trade.</span>
           </h2>
+
           <div className="space-y-4">
             {[
               { icon: Shield, text: "AI-powered token analysis" },
               { icon: Zap, text: "Real-time rug-pull detection" },
-              { icon: Activity, text: "46-feature risk breakdown" },
+              { icon: Activity, text: "77-feature risk breakdown" },
             ].map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-center gap-3 text-sm text-muted-foreground">
                 <Icon className="h-4 w-4 text-primary" />
@@ -132,11 +140,11 @@ const Connect = () => {
               </div>
             ))}
           </div>
-        </div>
 
-        <p className="text-xs text-muted-foreground/60">
-          Monitoring 63,000+ Solana pools in real-time
-        </p>
+          <p className="text-xs text-muted-foreground/60">
+            Monitoring 116,000+ Solana pools in real-time
+          </p>
+        </div>
       </div>
 
       {/* Right form panel */}
