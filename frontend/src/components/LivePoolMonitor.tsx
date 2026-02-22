@@ -170,7 +170,7 @@ const LivePoolMonitor = () => {
   const [error, setError] = useState(false);
 
   // Risk Scanner state
-  const [riskThreshold, setRiskThreshold] = useState(100);
+  const [riskThreshold, setRiskThreshold] = useState(80);
   const [filterMode, setFilterMode] = useState<"risk" | "liquidity">("risk");
   const [filteredTokens, setFilteredTokens] = useState<TokenListItem[]>([]);
   const [filterLoading, setFilterLoading] = useState(false);
@@ -279,7 +279,7 @@ const LivePoolMonitor = () => {
 
   // Initial filter load
   useEffect(() => {
-    fetchFiltered(100, "risk");
+    fetchFiltered(80, "risk");
   }, [fetchFiltered]);
 
   /* ── Live Feed: newest first ───────────────────────────── */
